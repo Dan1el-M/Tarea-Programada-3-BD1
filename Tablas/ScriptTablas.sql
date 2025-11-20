@@ -6,7 +6,7 @@
 
 --*******************************************************************************************************************************************
 --*******************************************************************************************************************************************
---A todas las tablas se le debe de poner fecha, pero por pereza no se va a poder (en las tablas si se implementa, este es uns cript viejo)
+-- Script que si tiene las fechas, y se corrigió el foreign key de propiedades
 --*******************************************************************************************************************************************
 --*******************************************************************************************************************************************
 
@@ -31,9 +31,10 @@ CREATE TABLE dbo.TipoZonaPropiedad(
   Nombre NVARCHAR(128) NOT NULL                  -- 4=Industrial, 5=Comercial
 );
 
-CREATE TABLE dbo.TipoUsuario(
-  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Administrador, 2=Propietario
-  Nombre NVARCHAR(128) NOT NULL
+CREATE TABLE dbo.Usuario(
+  Id     INT                    NOT NULL PRIMARY KEY,     -- Admin
+  NombreUsuario NVARCHAR(128)   NOT NULL,
+  Contrasena NVARCHAR(128)      NOT NULL
 );
 
 CREATE TABLE dbo.TipoAsociacion(
@@ -76,7 +77,6 @@ CREATE TABLE dbo.Persona(
 
 -- Propiedades
 CREATE TABLE dbo.Propiedad(
-  Id                   INT            NOT NULL IDENTITY(1,1) PRIMARY KEY,
   NumeroFinca          VARCHAR(64)    NOT NULL UNIQUE,  -- viene del XML
   NumeroMedidor        VARCHAR(32)    NOT NULL UNIQUE,         -- ej. M-1001
   MetrosCuadrados      DECIMAL(10,2)  NOT NULL,
@@ -96,15 +96,15 @@ CREATE TABLE dbo.Propiedad(
 
 -- Relación Propiedad-Persona (propietarios a lo largo del tiempo)
 CREATE TABLE dbo.PropiedadPersona(   -- ****** Esta hay que revisarla bien, porque no sabemos si faltan campos
-  PropiedadId      INT  NOT NULL,
-  PersonaId        INT  NOT NULL,
-  FechaInicio      DATE NOT NULL,
-  FechaFin         DATE NULL,
-  TipoAsociacionId INT  NOT NULL,  -- viene del XML de movimientos
+  PropiedadId      VARCHAR(64)  NOT NULL,
+  PersonaId        INT          NOT NULL,
+  FechaInicio      DATE         NOT NULL,
+  FechaFin         DATE         NULL,
+  TipoAsociacionId INT          NOT NULL,  -- viene del XML de movimientos
 
   CONSTRAINT PK_PersonaPropiedad PRIMARY KEY (PropiedadId, PersonaId, FechaInicio),
   CONSTRAINT FK_PP_Propiedad      FOREIGN KEY (PropiedadId)
-    REFERENCES dbo.Propiedad(Id),
+    REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT FK_PP_Persona        FOREIGN KEY (PersonaId)
     REFERENCES dbo.Persona(Id),
   CONSTRAINT FK_PP_TipoAsociacion FOREIGN KEY (TipoAsociacionId)
@@ -152,14 +152,14 @@ CREATE TABLE dbo.ConceptoCobro( -- viene del XML de catalogos de CCs
 -- Asignación de Conceptos de Cobro a Propiedades
 -- (estado actual de qué CC aplica a qué propiedad)
 CREATE TABLE dbo.ConceptoCobroPropiedad(
-  PropiedadId     INT  NOT NULL,
+  PropiedadId     VARCHAR(64)  NOT NULL,
   ConceptoCobroId INT  NOT NULL,
   FechaAsociacion DATE NOT NULL,
   Activo          BIT  NOT NULL DEFAULT(1),
 
   CONSTRAINT PK_PropiedadConceptoCobro PRIMARY KEY (PropiedadId, ConceptoCobroId),
   CONSTRAINT FK_PCC_Propiedad     FOREIGN KEY (PropiedadId)
-    REFERENCES dbo.Propiedad(Id),
+    REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT FK_PCC_ConceptoCobro FOREIGN KEY (ConceptoCobroId)
     REFERENCES dbo.ConceptoCobro(Id)
 );
@@ -171,16 +171,16 @@ CREATE TABLE dbo.ConceptoCobroPropiedad(
 -- Estados de factura simples (si no quieres otro catálogo)
 -- 1=Pendiente, 2=Pagada
 CREATE TABLE dbo.Factura(
-  Id                  INT      NOT NULL IDENTITY(1,1) PRIMARY KEY,
-  PropiedadId         INT      NOT NULL,
-  FechaFactura        DATE     NOT NULL,
-  FechaLimitePagar    DATE     NOT NULL,
-  TotalAPagarOriginal MONEY    NOT NULL DEFAULT(0),
-  TotalAPagarFinal    MONEY    NOT NULL DEFAULT(0),
-  EstadoFacturaId     INT      NOT NULL DEFAULT(1),
+  Id                  INT         NOT NULL IDENTITY(1,1) PRIMARY KEY,
+  PropiedadId         VARCHAR(64) NOT NULL,
+  FechaFactura        DATE        NOT NULL,
+  FechaLimitePagar    DATE        NOT NULL,
+  TotalAPagarOriginal MONEY       NOT NULL DEFAULT(0),
+  TotalAPagarFinal    MONEY       NOT NULL DEFAULT(0),
+  EstadoFacturaId     INT         NOT NULL DEFAULT(1),
 
   CONSTRAINT FK_Factura_Propiedad FOREIGN KEY (PropiedadId)
-    REFERENCES dbo.Propiedad(Id),
+    REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT CK_Factura_Estado CHECK (EstadoFacturaId IN (1,2))
 );
 
@@ -235,34 +235,58 @@ CREATE TABLE dbo.LecturaMedidor(
 
 -- 1=Pendiente, 2=Ejecutada
 CREATE TABLE dbo.OrdenCorta(
-  Id             INT   NOT NULL IDENTITY(1,1) PRIMARY KEY,
-  PropiedadId    INT   NOT NULL,
-  FacturaId      INT   NOT NULL,
-  FechaGenerada  DATE  NOT NULL,
-  FechaEjecutada DATE  NULL,
-  Estado         INT   NOT NULL DEFAULT(1),
+  Id             INT          NOT NULL IDENTITY(1,1) PRIMARY KEY,
+  PropiedadId    VARCHAR(64)  NOT NULL,
+  FacturaId      INT          NOT NULL,
+  FechaGenerada  DATE         NOT NULL,
+  FechaEjecutada DATE         NULL,
+  Estado         INT          NOT NULL DEFAULT(1),
 
   CONSTRAINT FK_OrdenCorta_Propiedad FOREIGN KEY (PropiedadId)
-    REFERENCES dbo.Propiedad(Id),
+    REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT FK_OrdenCorta_Factura FOREIGN KEY (FacturaId)
     REFERENCES dbo.Factura(Id),
   CONSTRAINT CK_OrdenCorta_Estado CHECK (Estado IN (1,2))
 );
 
 CREATE TABLE dbo.OrdenReconexion(
-  Id             INT   NOT NULL IDENTITY(1,1) PRIMARY KEY,
-  PropiedadId    INT   NOT NULL,
-  FacturaId      INT   NOT NULL,
-  FechaGenerada  DATE  NOT NULL,
-  FechaEjecutada DATE  NULL,
-  Estado         INT   NOT NULL DEFAULT(1),
+  Id             INT           NOT NULL IDENTITY(1,1) PRIMARY KEY,
+  PropiedadId    VARCHAR(64)   NOT NULL,
+  FacturaId      INT           NOT NULL,
+  FechaGenerada  DATE          NOT NULL,
+  FechaEjecutada DATE          NULL,
+  Estado         INT           NOT NULL DEFAULT(1),
 
   CONSTRAINT FK_OrdenReconexion_Propiedad FOREIGN KEY (PropiedadId)
-    REFERENCES dbo.Propiedad(Id),
+    REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT FK_OrdenReconexion_Factura FOREIGN KEY (FacturaId)
     REFERENCES dbo.Factura(Id),
   CONSTRAINT CK_OrdenReconexion_Estado CHECK (Estado IN (1,2))
 );
+
+/* =========================================================
+   TABLA PARA MANEJO DE ERRORES
+   ========================================================= */
+
+CREATE TABLE [dbo].[DBError](
+	[Id] [int] IDENTITY(1,1) NOT NULL,
+	[UserName] [nvarchar](50) NULL,
+	[Number] [int] NULL,
+	[State] [int] NULL,
+	[Severity] [int] NULL,
+	[Line] [int] NULL,
+	[Procedure] [nvarchar](128) NULL,
+	[Message] [nvarchar](4000) NULL,
+	[DateTime] [datetime2](7) NOT NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)WITH (PAD_INDEX = OFF, STATISTICS_NORECOMPUTE = OFF, IGNORE_DUP_KEY = OFF, ALLOW_ROW_LOCKS = ON, ALLOW_PAGE_LOCKS = ON, OPTIMIZE_FOR_SEQUENTIAL_KEY = OFF) ON [PRIMARY]
+) ON [PRIMARY]
+GO
+
+ALTER TABLE [dbo].[DBError] ADD  DEFAULT (sysdatetime()) FOR [DateTime]
+GO
 
 /* =========================================================
    INDICES DE APOYO / CALIDAD DE DATOS

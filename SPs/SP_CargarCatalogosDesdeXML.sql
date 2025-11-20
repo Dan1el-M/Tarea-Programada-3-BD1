@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 19/11/2025 21:34:04 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 20/11/2025 03:39:46 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -73,8 +73,9 @@ BEGIN
         --     <Admin id="1" nombre="Administrador" password="SoyAdmin"/>
         --   </UsuarioAdmin>
         ---------------------------------------------------------------------
-        INSERT INTO dbo.Usuario (NombreUsuario, Contrasena)
+        INSERT INTO dbo.Usuario (Id, NombreUsuario, Contrasena)
         SELECT
+            T.A.value('@id','int'),
             T.A.value('@nombre',   'varchar(64)'),
             T.A.value('@password', 'varchar(128)')
         FROM @inXmlData.nodes('/Catalogos/UsuarioAdmin/Admin') AS T(A);

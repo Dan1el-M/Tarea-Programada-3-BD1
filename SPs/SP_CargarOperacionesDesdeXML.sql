@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXML]    Script Date: 20/11/2025 00:01:01 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXML]    Script Date: 20/11/2025 03:40:07 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -132,7 +132,7 @@ BEGIN
                 TipoAsociacionId
             )
             SELECT
-                p.Id                            AS PropiedadId,
+                p.NumeroFinca                   AS PropiedadId,
                 per.Id                          AS PersonaId,
                 @FechaActual                    AS FechaInicio,
                 NULL                            AS FechaFin,
@@ -148,7 +148,7 @@ BEGIN
                   -- Evitamos duplicar una asociación ya activa
                   SELECT 1
                   FROM dbo.PropiedadPersona pp
-                  WHERE pp.PropiedadId = p.Id
+                  WHERE pp.PropiedadId = p.NumeroFinca
                     AND pp.PersonaId   = per.Id
                     AND pp.FechaFin IS NULL
               );
@@ -161,7 +161,7 @@ BEGIN
                 pp.TipoAsociacionId = 2
             FROM dbo.PropiedadPersona pp
             INNER JOIN dbo.Propiedad p
-                ON p.Id = pp.PropiedadId
+                ON p.NumeroFinca = pp.PropiedadId
             INNER JOIN dbo.Persona per
                 ON per.Id = pp.PersonaId
             INNER JOIN @FechaXml.nodes('/FechaOperacion/PropiedadPersona/Movimiento') AS T(M)
@@ -188,7 +188,7 @@ BEGIN
                 Activo
             )
             SELECT
-                p.Id              AS PropiedadId,
+                p.NumeroFinca     AS PropiedadId,
                 cc.Id             AS ConceptoCobroId,
                 @FechaActual      AS FechaAsociacion,
                 1                 AS Activo
@@ -202,7 +202,7 @@ BEGIN
               (
                   SELECT 1
                   FROM dbo.ConceptoCobroPropiedad cp
-                  WHERE cp.PropiedadId     = p.Id
+                  WHERE cp.PropiedadId     = p.NumeroFinca
                     AND cp.ConceptoCobroId = cc.Id
               );
 
@@ -211,7 +211,7 @@ BEGIN
             SET cp.Activo = 0
             FROM dbo.ConceptoCobroPropiedad cp
             INNER JOIN dbo.Propiedad p
-                ON p.Id = cp.PropiedadId
+                ON p.NumeroFinca = cp.PropiedadId
             INNER JOIN dbo.ConceptoCobro cc
                 ON cc.Id = cp.ConceptoCobroId
             INNER JOIN @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
@@ -289,7 +289,7 @@ BEGIN
                 SELECT TOP (1) f.Id, f.TotalAPagarFinal
                 FROM dbo.Factura f
                 INNER JOIN dbo.Propiedad p
-                    ON p.Id = f.PropiedadId
+                    ON p.NumeroFinca = f.PropiedadId
                 WHERE p.NumeroFinca = PX.NumeroFinca
                   AND f.EstadoFacturaId = 1   -- Pendiente
                 ORDER BY f.FechaFactura, f.Id -- más antigua primero
