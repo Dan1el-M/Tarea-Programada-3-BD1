@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXML]    Script Date: 20/11/2025 03:40:07 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXML]    Script Date: 21/11/2025 11:48:31 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -184,14 +184,12 @@ BEGIN
             (
                 PropiedadId,
                 ConceptoCobroId,
-                FechaAsociacion,
-                Activo
+                FechaAsociacion
             )
             SELECT
                 p.NumeroFinca     AS PropiedadId,
                 cc.Id             AS ConceptoCobroId,
-                @FechaActual      AS FechaAsociacion,
-                1                 AS Activo
+                @FechaActual      AS FechaAsociacion
             FROM @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
             INNER JOIN dbo.Propiedad p
                 ON p.NumeroFinca = T.M.value('@numeroFinca','varchar(64)')
@@ -205,20 +203,6 @@ BEGIN
                   WHERE cp.PropiedadId     = p.NumeroFinca
                     AND cp.ConceptoCobroId = cc.Id
               );
-
-            -- 2.4.2 Desasignar CC (marcar Activo=0)
-            UPDATE cp
-            SET cp.Activo = 0
-            FROM dbo.ConceptoCobroPropiedad cp
-            INNER JOIN dbo.Propiedad p
-                ON p.NumeroFinca = cp.PropiedadId
-            INNER JOIN dbo.ConceptoCobro cc
-                ON cc.Id = cp.ConceptoCobroId
-            INNER JOIN @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
-                ON p.NumeroFinca = T.M.value('@numeroFinca','varchar(64)')
-               AND cc.Id         = T.M.value('@idCC','int')
-            WHERE T.M.value('@tipoAsociacionId','int') = 2
-              AND cp.Activo = 1;
 
             ----------------------------------------------------------------
             -- 2.5 LECTURAS DE MEDIDOR
