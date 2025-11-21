@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 20/11/2025 03:39:46 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 21/11/2025 11:48:00 ******/
 SET ANSI_NULLS ON
 GO
 

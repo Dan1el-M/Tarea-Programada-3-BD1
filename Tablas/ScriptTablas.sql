@@ -6,35 +6,35 @@
 
 --*******************************************************************************************************************************************
 --*******************************************************************************************************************************************
--- Script que si tiene las fechas, y se corrigi√≥ el foreign key de propiedades
+-- Script que si tiene las fechas, y se corrigiÛ el foreign key de propiedades
 --*******************************************************************************************************************************************
 --*******************************************************************************************************************************************
 
--- Par√°metros generales del sistema
+-- Par·metros generales del sistema
 CREATE TABLE dbo.ParametrosSistema(
   Nombre NVARCHAR(128) NOT NULL PRIMARY KEY,
   Valor  NVARCHAR(256) NOT NULL
 );
 
 CREATE TABLE dbo.TipoMovimientoLecturaMedidor(
-  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Lectura, 2=Ajuste Cr√©dito, 3=Ajuste D√©bito
+  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Lectura, 2=Ajuste CrÈdito, 3=Ajuste DÈbito
   Nombre NVARCHAR(128) NOT NULL
 );
 
 CREATE TABLE dbo.TipoUsoPropiedad(
-  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Habitaci√≥n, 2=Comercial, 3=Industrial,
-  Nombre NVARCHAR(128) NOT NULL                  -- 4=Lote Bald√≠o, 5=Agr√≠cola
+  Id     INT           NOT NULL PRIMARY KEY,     -- 1=HabitaciÛn, 2=Comercial, 3=Industrial,
+  Nombre NVARCHAR(128) NOT NULL                  -- 4=Lote BaldÌo, 5=AgrÌcola
 );
 
 CREATE TABLE dbo.TipoZonaPropiedad(
-  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Residencial, 2=Agr√≠cola, 3=Bosque,
+  Id     INT           NOT NULL PRIMARY KEY,     -- 1=Residencial, 2=AgrÌcola, 3=Bosque,
   Nombre NVARCHAR(128) NOT NULL                  -- 4=Industrial, 5=Comercial
 );
 
 CREATE TABLE dbo.Usuario(
-  Id     INT                    NOT NULL PRIMARY KEY,     -- Admin
+  Id     INT             NOT NULL PRIMARY KEY,     -- 1=Administrador, 2=Propietario
   NombreUsuario NVARCHAR(128)   NOT NULL,
-  Contrasena NVARCHAR(128)      NOT NULL
+  Contrasena NVARCHAR(128) NOT NULL
 );
 
 CREATE TABLE dbo.TipoAsociacion(
@@ -65,7 +65,7 @@ CREATE TABLE dbo.TipoMontoCC(
    PERSONAS, PROPIEDADES Y USUARIOS
    ========================================================= */
 
--- Personas (f√≠sicas o jur√≠dicas)
+-- Personas (fÌsicas o jurÌdicas)
 CREATE TABLE dbo.Persona(
   Id              INT           NOT NULL IDENTITY(1,1) PRIMARY KEY,
   ValorDocumento  VARCHAR(64)   NOT NULL UNIQUE,      -- viene del XML
@@ -77,7 +77,7 @@ CREATE TABLE dbo.Persona(
 
 -- Propiedades
 CREATE TABLE dbo.Propiedad(
-  NumeroFinca          VARCHAR(64)    NOT NULL UNIQUE,  -- viene del XML
+  NumeroFinca          VARCHAR(64)    NOT NULL PRIMARY KEY,  -- viene del XML
   NumeroMedidor        VARCHAR(32)    NOT NULL UNIQUE,         -- ej. M-1001
   MetrosCuadrados      DECIMAL(10,2)  NOT NULL,
   TipoUsoId            INT            NOT NULL,
@@ -94,7 +94,7 @@ CREATE TABLE dbo.Propiedad(
     REFERENCES dbo.TipoZonaPropiedad(Id)
 );
 
--- Relaci√≥n Propiedad-Persona (propietarios a lo largo del tiempo)
+-- RelaciÛn Propiedad-Persona (propietarios a lo largo del tiempo)
 CREATE TABLE dbo.PropiedadPersona(   -- ****** Esta hay que revisarla bien, porque no sabemos si faltan campos
   PropiedadId      VARCHAR(64)  NOT NULL,
   PersonaId        INT          NOT NULL,
@@ -112,7 +112,7 @@ CREATE TABLE dbo.PropiedadPersona(   -- ****** Esta hay que revisarla bien, porq
 );
 
 /* =========================================================
-   CONCEPTOS DE COBRO Y ASIGNACI√ìN A PROPIEDADES
+   CONCEPTOS DE COBRO Y ASIGNACI”N A PROPIEDADES
    ========================================================= */
 
 CREATE TABLE dbo.ConceptoCobro( -- viene del XML de catalogos de CCs
@@ -139,7 +139,7 @@ CREATE TABLE dbo.ConceptoCobro( -- viene del XML de catalogos de CCs
     ValorPorcentual IS NULL OR (ValorPorcentual BETWEEN 0 AND 1)
   ),
 
-  -- Ning√∫n valor monetario m√≠nimo / fijo debe ser negativo
+  -- Ning˙n valor monetario mÌnimo / fijo debe ser negativo
   CONSTRAINT CK_ConceptoCobro_NoNeg CHECK (
     ISNULL(ValorMinimo,0)          >= 0 AND
     ISNULL(ValorFijo,0)            >= 0 AND
@@ -149,8 +149,8 @@ CREATE TABLE dbo.ConceptoCobro( -- viene del XML de catalogos de CCs
   )
 );
 
--- Asignaci√≥n de Conceptos de Cobro a Propiedades
--- (estado actual de qu√© CC aplica a qu√© propiedad)
+-- AsignaciÛn de Conceptos de Cobro a Propiedades
+-- (estado actual de quÈ CC aplica a quÈ propiedad)
 CREATE TABLE dbo.ConceptoCobroPropiedad(
   PropiedadId     VARCHAR(64)  NOT NULL,
   ConceptoCobroId INT  NOT NULL,
@@ -168,7 +168,7 @@ CREATE TABLE dbo.ConceptoCobroPropiedad(
    FACTURAS, DETALLES Y PAGOS
    ========================================================= */
 
--- Estados de factura simples (si no quieres otro cat√°logo)
+-- Estados de factura simples (si no quieres otro cat·logo)
 -- 1=Pendiente, 2=Pagada
 CREATE TABLE dbo.Factura(
   Id                  INT         NOT NULL IDENTITY(1,1) PRIMARY KEY,
@@ -218,7 +218,7 @@ CREATE TABLE dbo.Pago(
 CREATE TABLE dbo.LecturaMedidor(
   Id               INT           NOT NULL IDENTITY(1,1) PRIMARY KEY,
   NumeroMedidor    VARCHAR(32)   NOT NULL,
-  TipoMovimientoId INT           NOT NULL,         -- FK a cat√°logo
+  TipoMovimientoId INT           NOT NULL,         -- FK a cat·logo
   FechaLectura     DATE          NULL,             
   Valor            DECIMAL(10,2) NOT NULL,
 
@@ -292,7 +292,7 @@ GO
    INDICES DE APOYO / CALIDAD DE DATOS
    ========================================================= */
 
--- Unicidad en cat√°logos y entidades clave
+-- Unicidad en cat·logos y entidades clave
 CREATE UNIQUE INDEX UX_ConceptoCobro_Nombre       ON dbo.ConceptoCobro(Nombre);
 CREATE UNIQUE INDEX UX_Propiedad_NumeroFinca      ON dbo.Propiedad(NumeroFinca);
 CREATE UNIQUE INDEX UX_Persona_ValorDocumento     ON dbo.Persona(ValorDocumento);
@@ -301,7 +301,7 @@ CREATE UNIQUE INDEX UX_TipoUsoPropiedad_Nombre    ON dbo.TipoUsoPropiedad(Nombre
 CREATE UNIQUE INDEX UX_TipoMedioPago_Nombre       ON dbo.TipoMedioPago(Nombre);
 CREATE UNIQUE INDEX UX_TipoMovLectura_Nombre      ON dbo.TipoMovimientoLecturaMedidor(Nombre);
 
--- Indices para consultas t√≠picas
+-- Indices para consultas tÌpicas
 CREATE INDEX IX_Factura_Propiedad ON dbo.Factura(PropiedadId);
 CREATE INDEX IX_Factura_Estado    ON dbo.Factura(EstadoFacturaId);
 CREATE INDEX IX_Pago_Factura      ON dbo.Pago(FacturaId);
