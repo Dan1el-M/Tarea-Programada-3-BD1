@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 21/11/2025 11:48:00 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarCatalogosDesdeXML]    Script Date: 21/11/2025 22:57:12 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -11,19 +11,15 @@ GO
 
 CREATE   PROCEDURE [dbo].[SP_CargarCatalogosDesdeXML]
     @inXmlData     XML,          -- XML con el contenido de catalogosV2.xml
-    @outResultCode INT OUTPUT    -- Código de resultado (0 = OK, otro = error)
+    @outResultCode INT OUTPUT    
 AS
 BEGIN
     SET NOCOUNT ON;
 
     BEGIN TRY
-        ---------------------------------------------------------------------
-        -- 1. PARÁMETROS DEL SISTEMA
-        --   <ParametrosSistema>
-        --     <DiasVencimientoFactura>15</DiasVencimientoFactura>
-        --     <DiasGraciaCorta>10</DiasGraciaCorta>
-        --   </ParametrosSistema>
-        ---------------------------------------------------------------------
+
+        --  PARÁMETROS DEL SISTEMA
+
         INSERT INTO dbo.ParametrosSistema (Nombre, Valor)
         VALUES 
             ('DiasVencimientoFactura',
@@ -37,42 +33,33 @@ BEGIN
                 'int'
              )));
 
-        ---------------------------------------------------------------------
-        -- 2. TIPO MOVIMIENTO LECTURA MEDIDOR
-        --   <TipoMovimientoLecturaMedidor>
-        --     <TipoMov id="1" nombre="Lectura"/>
-        --   </TipoMovimientoLecturaMedidor>
-        ---------------------------------------------------------------------
+
+        --TIPO MOVIMIENTO LECTURA MEDIDOR
+
         INSERT INTO dbo.TipoMovimientoLecturaMedidor (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoMovimientoLecturaMedidor/TipoMov') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 3. TIPO USO PROPIEDAD
-        ---------------------------------------------------------------------
+        -- TIPO USO PROPIEDAD
         INSERT INTO dbo.TipoUsoPropiedad (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoUsoPropiedad/TipoUso') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 4. TIPO ZONA PROPIEDAD
-        ---------------------------------------------------------------------
+
+        -- TIPO ZONA PROPIEDAD
         INSERT INTO dbo.TipoZonaPropiedad (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoZonaPropiedad/TipoZona') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 5. USUARIO ADMINISTRADOR DESDE XML
-        --   <UsuarioAdmin>
-        --     <Admin id="1" nombre="Administrador" password="SoyAdmin"/>
-        --   </UsuarioAdmin>
-        ---------------------------------------------------------------------
+
+        -- USUARIO ADMINISTRADOR DESDE XML
+      
         INSERT INTO dbo.Usuario (Id, NombreUsuario, Contrasena)
         SELECT
             T.A.value('@id','int'),
@@ -80,36 +67,25 @@ BEGIN
             T.A.value('@password', 'varchar(128)')
         FROM @inXmlData.nodes('/Catalogos/UsuarioAdmin/Admin') AS T(A);
 
-        ---------------------------------------------------------------------
-        -- 6. TIPO ASOCIACION
-        --   <TipoAsociacion>
-        --     <TipoAso id="1" nombre="Asociar"/>
-        --   </TipoAsociacion>
-        ---------------------------------------------------------------------
+
+        /*
+        -- TIPO ASOCIACION
         INSERT INTO dbo.TipoAsociacion (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoAsociacion/TipoAso') AS T(X);
-
-        ---------------------------------------------------------------------
-        -- 8. TIPO MEDIO PAGO
-        --   <TipoMedioPago>
-        --     <MedioPago id="1" nombre="Efectivo"/>
-        --   </TipoMedioPago>
-        ---------------------------------------------------------------------
+        */
+  
+        -- TIPO MEDIO PAGO
         INSERT INTO dbo.TipoMedioPago (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoMedioPago/MedioPago') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 9. PERIODO MONTO CC
-        --   <PeriodoMontoCC>
-        --     <PeriodoMonto id="1" nombre="Mensual" qMeses="1" .../>
-        --   </PeriodoMontoCC>
-        ---------------------------------------------------------------------
+
+        -- PERIODO MONTO CC
         INSERT INTO dbo.PeriodoMontoCC (Id, Nombre, Dias, QMeses)
         SELECT
             T.X.value('@id','int'),
@@ -118,23 +94,15 @@ BEGIN
             NULLIF(T.X.value('@qMeses','int'), 0)
         FROM @inXmlData.nodes('/Catalogos/PeriodoMontoCC/PeriodoMonto') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 10. TIPO MONTO CC
-        ---------------------------------------------------------------------
+        -- TIPO MONTO CC
         INSERT INTO dbo.TipoMontoCC (Id, Nombre)
         SELECT
             T.X.value('@id','int'),
             T.X.value('@nombre','nvarchar(128)')
         FROM @inXmlData.nodes('/Catalogos/TipoMontoCC/TipoMonto') AS T(X);
 
-        ---------------------------------------------------------------------
-        -- 11. CONCEPTOS DE COBRO (CCs)
-        --   <CCs>
-        --     <CC id="1" nombre="ConsumoAgua" TipoMontoCC="2" PeriodoMontoCC="1"
-        --         ValorMinimo="0" ValorMinimoM3="" ValorFijoM3Adicional=""
-        --         ValorPorcentual="" ValorFijo="" ValorM2Minimo="" ValorTramosM2=""/>
-        --   </CCs>
-        ---------------------------------------------------------------------
+/*
+        --  CONCEPTOS DE COBRO (CCs)
         INSERT INTO dbo.ConceptoCobro (
         Id
         , Nombre
@@ -162,18 +130,95 @@ BEGIN
         NULLIF(C.value('@ValorTramosM2', 'int'), 0)
 
     FROM @inXmlData.nodes('/Catalogos/CCs/CC') AS T(C);
+*/
+        
+          /* ==========================
+           CONCEPTOS DE COBRO (HERENCIA)
+           ========================== */
+
+        DECLARE @CCs TABLE(
+            Id                   INT,
+            Nombre               NVARCHAR(128),
+            TipoMontoCCId        INT,
+            PeriodoMontoCCId     INT,
+            ValorMinimo          MONEY,
+            ValorMinimoM3        INT,
+            ValorFijoM3Adicional MONEY,
+            ValorPorcentual      DECIMAL(10,2),
+            ValorFijo            MONEY,
+            ValorM2Minimo        INT,
+            ValorTramosM2        INT
+        );
+
+        INSERT INTO @CCs
+        SELECT
+            C.value('@id','int'),
+            C.value('@nombre','nvarchar(128)'),
+            C.value('@TipoMontoCC','int'),
+            C.value('@PeriodoMontoCC','int'),
+            NULLIF(C.value('@ValorMinimo', 'money'), 0),
+            NULLIF(C.value('@ValorMinimoM3', 'int'), 0),
+            NULLIF(C.value('@ValorFijoM3Adicional', 'money'), 0),
+            NULLIF(TRY_CONVERT(decimal(10,2), C.value('@ValorPorcentual','nvarchar(50)')), 0),
+            NULLIF(C.value('@ValorFijo', 'money'), 0),
+            NULLIF(C.value('@ValorM2Minimo', 'int'), 0),
+            NULLIF(C.value('@ValorTramosM2', 'int'), 0)
+        FROM @inXmlData.nodes('/Catalogos/CCs/CC') AS T(C);
+
+        -- 1) PADRE: siempre se inserta acá
+        INSERT INTO dbo.ConceptoCobro (Id, Nombre, TipoMontoCCId, PeriodoMontoCCId)
+        SELECT Id, Nombre, TipoMontoCCId, PeriodoMontoCCId
+        FROM @CCs;
+
+        -- 2) HIJAS: según el nombre del CC
+        -- Consumo de Agua
+        INSERT INTO dbo.CC_ConsumoAgua (Id, ValorMinimo, ValorMinimoM3, ValorFijoM3Adicional)
+        SELECT Id, ValorMinimo, ValorMinimoM3, ValorFijoM3Adicional
+        FROM @CCs
+        WHERE Nombre = 'ConsumoAgua';
+
+        -- Patente Comercial
+        INSERT INTO dbo.CC_PatenteComercial (Id, ValorFijo)
+        SELECT Id, ValorFijo
+        FROM @CCs
+        WHERE Nombre = 'PatenteComercial';
+
+        -- Impuesto a la Propiedad
+        INSERT INTO dbo.CC_ImpuestoPropiedad (Id, ValorPorcentual, ValorM2Minimo, ValorTramosM2)
+        SELECT Id, ValorPorcentual, ValorM2Minimo, ValorTramosM2
+        FROM @CCs
+        WHERE Nombre = 'ImpuestoPropiedad';
+
+        -- Recolección Basura
+        INSERT INTO dbo.CC_RecoleccionBasura (Id, ValorMinimo, ValorFijo, ValorM2Minimo)
+        SELECT Id, ValorMinimo, ValorFijo, ValorM2Minimo
+        FROM @CCs
+        WHERE Nombre = 'RecoleccionBasura';
+
+        -- Mantenimiento Parques
+        INSERT INTO dbo.CC_MantenimientoParques (Id, ValorFijo)
+        SELECT Id, ValorFijo
+        FROM @CCs
+        WHERE Nombre = 'MantenimientoParques';
+
+        -- Reconexion Agua
+        INSERT INTO dbo.CC_ReconexionAgua (Id, ValorFijo)
+        SELECT Id, ValorFijo
+        FROM @CCs
+        WHERE Nombre = 'ReconexionAgua';
+
+        -- Intereses Moratorios
+        INSERT INTO dbo.CC_InteresesMoratorios (Id, ValorPorcentual)
+        SELECT Id, ValorPorcentual
+        FROM @CCs
+        WHERE Nombre = 'InteresesMoratorios';
 
 
-        ---------------------------------------------------------------------
-        -- ÉXITO
-        ---------------------------------------------------------------------
         SET @outResultCode = 0;
         RETURN;
     END TRY
     BEGIN CATCH
-        ---------------------------------------------------------------------
-        -- ERROR: registramos en DBError y devolvemos código
-        ---------------------------------------------------------------------
+
         SET @outResultCode = 50001;
 
         INSERT INTO dbo.DBError (
