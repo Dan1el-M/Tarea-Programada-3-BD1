@@ -1,12 +1,13 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  Trigger [dbo].[TRG_DespuesDeInsert]    Script Date: 21/11/2025 11:45:19 ******/
+/****** Object:  Trigger [dbo].[TRG_DespuesDeInsert]    Script Date: 21/11/2025 22:57:40 ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
+
 
 
 CREATE   TRIGGER [dbo].[TRG_DespuesDeInsert]
