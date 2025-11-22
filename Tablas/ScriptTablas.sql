@@ -37,10 +37,13 @@ CREATE TABLE dbo.Usuario(
   Contrasena NVARCHAR(128) NOT NULL
 );
 
+/*
 CREATE TABLE dbo.TipoAsociacion(
   Id     INT           NOT NULL PRIMARY KEY,     -- 1=Asociar, 2=Desasociar
   Nombre NVARCHAR(128) NOT NULL
 );
+*/
+
 
 CREATE TABLE dbo.TipoMedioPago(
   Id     INT           NOT NULL PRIMARY KEY,     -- 1=Efectivo, 2=Tarjeta
@@ -106,9 +109,11 @@ CREATE TABLE dbo.PropiedadPersona(   -- ****** Esta hay que revisarla bien, porq
   CONSTRAINT FK_PP_Propiedad      FOREIGN KEY (PropiedadId)
     REFERENCES dbo.Propiedad(NumeroFinca),
   CONSTRAINT FK_PP_Persona        FOREIGN KEY (PersonaId)
-    REFERENCES dbo.Persona(Id),
-  CONSTRAINT FK_PP_TipoAsociacion FOREIGN KEY (TipoAsociacionId)
+    REFERENCES dbo.Persona(Id)
+    /*
+    CONSTRAINT FK_PP_TipoAsociacion FOREIGN KEY (TipoAsociacionId)
     REFERENCES dbo.TipoAsociacion(Id)
+    */ 
 );
 
 /* =========================================================
@@ -120,32 +125,107 @@ CREATE TABLE dbo.ConceptoCobro( -- viene del XML de catalogos de CCs
   Nombre               NVARCHAR(128) NOT NULL,
   TipoMontoCCId        INT           NOT NULL,
   PeriodoMontoCCId     INT           NOT NULL,
-  ValorMinimo          MONEY         NULL,
-  ValorMinimoM3        INT           NULL,
-  ValorFijoM3Adicional MONEY         NULL,
-  ValorPorcentual      DECIMAL(5,2)  NULL,  -- 0.01 = 1%
-  ValorFijo            MONEY         NULL,
-  ValorM2Minimo        INT           NULL,
-  ValorTractosM2       INT           NULL,
-  Activo               BIT           NOT NULL DEFAULT(1),
 
   CONSTRAINT FK_ConceptoCobro_PeriodoMontoCC FOREIGN KEY (PeriodoMontoCCId)
     REFERENCES dbo.PeriodoMontoCC(Id),
   CONSTRAINT FK_ConceptoCobro_TipoMontoCC FOREIGN KEY (TipoMontoCCId)
-    REFERENCES dbo.TipoMontoCC(Id),
+    REFERENCES dbo.TipoMontoCC(Id)
+);
+CREATE TABLE dbo.CC_ConsumoAgua(
+  Id                   INT   NOT NULL PRIMARY KEY,
+  ValorMinimo          MONEY NULL,
+  ValorMinimoM3        INT   NULL,
+  ValorFijoM3Adicional MONEY NULL,
 
-  -- Si usa porcentaje, debe estar entre 0 y 1
-  CONSTRAINT CK_ConceptoCobro_Porc CHECK (
+  CONSTRAINT FK_CC_ConsumoAgua
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_ConsumoAgua_NoNeg CHECK(
+    ISNULL(ValorMinimo,0) >= 0 AND
+    ISNULL(ValorMinimoM3,0) >= 0 AND
+    ISNULL(ValorFijoM3Adicional,0) >= 0
+  )
+);
+
+CREATE TABLE dbo.CC_PatenteComercial(
+  Id         INT   NOT NULL PRIMARY KEY,
+  ValorFijo  MONEY NULL,
+
+  CONSTRAINT FK_CC_PatenteComercial
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_PatenteComercial_NoNeg CHECK(
+    ISNULL(ValorFijo,0) >= 0
+  )
+);
+
+CREATE TABLE dbo.CC_ImpuestoPropiedad(
+  Id              INT          NOT NULL PRIMARY KEY,
+  ValorPorcentual DECIMAL(5,2) NULL,   -- 0.01=1%
+  ValorM2Minimo   INT          NULL,
+  ValorTramosM2   INT          NULL,
+
+  CONSTRAINT FK_CC_ImpuestoPropiedad
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_ImpuestoPropiedad_Porc CHECK(
     ValorPorcentual IS NULL OR (ValorPorcentual BETWEEN 0 AND 1)
   ),
+  CONSTRAINT CK_CC_ImpuestoPropiedad_NoNeg CHECK(
+    ISNULL(ValorM2Minimo,0) >= 0 AND
+    ISNULL(ValorTramosM2,0) >= 0
+  )
+);
 
-  -- Ningún valor monetario mínimo / fijo debe ser negativo
-  CONSTRAINT CK_ConceptoCobro_NoNeg CHECK (
-    ISNULL(ValorMinimo,0)          >= 0 AND
-    ISNULL(ValorFijo,0)            >= 0 AND
-    ISNULL(ValorFijoM3Adicional,0) >= 0 AND
-    ISNULL(ValorM2Minimo,0)        >= 0 AND
-    ISNULL(ValorTractosM2,0)       >= 0
+CREATE TABLE dbo.CC_RecoleccionBasura(
+  Id            INT   NOT NULL PRIMARY KEY,
+  ValorMinimo   MONEY NULL,
+  ValorFijo     MONEY NULL,
+  ValorM2Minimo INT   NULL,
+
+  CONSTRAINT FK_CC_RecoleccionBasura
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_RecoleccionBasura_NoNeg CHECK(
+    ISNULL(ValorMinimo,0) >= 0 AND
+    ISNULL(ValorFijo,0) >= 0 AND
+    ISNULL(ValorM2Minimo,0) >= 0
+  )
+);
+
+CREATE TABLE dbo.CC_MantenimientoParques(
+  Id        INT   NOT NULL PRIMARY KEY,
+  ValorFijo MONEY NULL,
+
+  CONSTRAINT FK_CC_MantenimientoParques
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_MantenimientoParques_NoNeg CHECK(
+    ISNULL(ValorFijo,0) >= 0
+  )
+);
+
+CREATE TABLE dbo.CC_ReconexionAgua(
+  Id        INT   NOT NULL PRIMARY KEY,
+  ValorFijo MONEY NULL,
+
+  CONSTRAINT FK_CC_ReconexionAgua
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_ReconexionAgua_NoNeg CHECK(
+    ISNULL(ValorFijo,0) >= 0
+  )
+);
+
+CREATE TABLE dbo.CC_InteresesMoratorios(
+  Id              INT          NOT NULL PRIMARY KEY,
+  ValorPorcentual DECIMAL(5,2) NULL,
+
+  CONSTRAINT FK_CC_InteresesMoratorios
+    FOREIGN KEY (Id) REFERENCES dbo.ConceptoCobro(Id),
+
+  CONSTRAINT CK_CC_InteresesMoratorios_Porc CHECK(
+    ValorPorcentual IS NULL OR (ValorPorcentual BETWEEN 0 AND 1)
   )
 );
 
@@ -155,7 +235,6 @@ CREATE TABLE dbo.ConceptoCobroPropiedad(
   PropiedadId     VARCHAR(64)  NOT NULL,
   ConceptoCobroId INT  NOT NULL,
   FechaAsociacion DATE NOT NULL,
-  Activo          BIT  NOT NULL DEFAULT(1),
 
   CONSTRAINT PK_PropiedadConceptoCobro PRIMARY KEY (PropiedadId, ConceptoCobroId),
   CONSTRAINT FK_PCC_Propiedad     FOREIGN KEY (PropiedadId)
