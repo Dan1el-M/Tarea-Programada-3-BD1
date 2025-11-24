@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXML]    Script Date: 23/11/2025 17:08:39 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXMLV2]    Script Date: 23/11/2025 17:08:55 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -9,7 +9,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SP_CargarOperacionesDesdeXML]
+CREATE   PROCEDURE [dbo].[SP_CargarOperacionesDesdeXMLV2]
 (
     @inXmlOperaciones XML,
     @outResultCode    INT OUTPUT
@@ -51,9 +51,8 @@ BEGIN
             FROM @Fechas
             ORDER BY Fecha;
 
-
             /*=================================================
-                Insertar Personas
+                2.1) Insertar Personas (solo nuevas)
             =================================================*/
             INSERT INTO dbo.Persona
             (
@@ -78,9 +77,9 @@ BEGIN
                       T.P.value('@valorDocumento','varchar(64)')
             );
 
-
             /*=================================================
-                Insertar propiedades
+                2.2) Insertar Propiedades (solo nuevas)
+                Nota: el TRG_DespuesDeInsert asigna CC base
             =================================================*/
             INSERT INTO dbo.Propiedad
             (
@@ -109,9 +108,8 @@ BEGIN
                       T.PR.value('@numeroFinca','varchar(64)')
             );
 
-
             /*=================================================
-                Relaciones entre propiedad y persona (el asociar y desasociar)
+                2.3) PropiedadPersona (asociar / desasociar)
             =================================================*/
             -- Asociar
             INSERT INTO dbo.PropiedadPersona
@@ -143,7 +141,7 @@ BEGIN
                     AND pp.FechaFin IS NULL
               );
 
-            -- Desasociar
+            -- Desasociar (cerrar intervalo)
             UPDATE pp
             SET
                 pp.FechaFin         = @FechaActual,
@@ -159,10 +157,12 @@ BEGIN
             WHERE T.M.value('@tipoAsociacionId','int') = 2
               AND pp.FechaFin IS NULL;
 
-
-            /*=================================================
-                Conceptos cobro por propiedad
+                        /*=================================================
+                2.4) CCPropiedad (asignar / desasignar)
+                Sin Activo: asignar = INSERT, desasignar = DELETE
             =================================================*/
+
+            -- Asignar CC (tipoAsociacionId = 1)
             INSERT INTO dbo.ConceptoCobroPropiedad
             (
                 PropiedadId,
@@ -187,9 +187,18 @@ BEGIN
                     AND cp.ConceptoCobroId = cc.Id
               );
 
+            -- Desasignar CC (tipoAsociacionId = 2)
+            DELETE cp
+            FROM dbo.ConceptoCobroPropiedad cp
+            INNER JOIN @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
+                ON cp.PropiedadId = T.M.value('@numeroFinca','varchar(64)')
+               AND cp.ConceptoCobroId = T.M.value('@idCC','int')
+            WHERE T.M.value('@tipoAsociacionId','int') = 2;
+
 
             /*=================================================
-                Cambios en el valor fiscal, se actualiza el saldo
+                2.5) Cambios en valor fiscal
+                (las facturas futuras ya saldrán con el nuevo valor)
             =================================================*/
             UPDATE p
             SET p.ValorFiscal = C.value('@nuevoValor','money')
@@ -197,17 +206,11 @@ BEGIN
             INNER JOIN @FechaXml.nodes('/FechaOperacion/PropiedadCambio/Cambio') AS T(C)
                 ON p.NumeroFinca = T.C.value('@numeroFinca','varchar(64)');
 
-
             /*=================================================
-                Procesos masivos que se corren cada día
-                   1) Lecturas de medidores
-                   2) Pagos de facturas
-                   3) Facturas -> se generan hoy si toca hacerla
-                   4) Cortas (de agua)
-                   5) Reconexion -> si ya no hay vencidas
+                2.6) Procesos diarios atómicos
+                * Aquí NO cambio nada en atómicos.
             =================================================*/
 
-            -- Lecturas de la fecha que se está ejecutando
             EXEC dbo.SP_ProcesarLecturasDelDia
                 @inFecha        = @FechaActual,
                 @inFechaXml     = @FechaXml,
@@ -216,7 +219,6 @@ BEGIN
             IF (@rc <> 0)
                 RAISERROR('Error en SP_ProcesarLecturasDelDia',16,1);
 
-            -- Pagos de la fecha que se está ejecutando
             EXEC dbo.SP_ProcesarPagosDelDia
                 @inFecha        = @FechaActual,
                 @inFechaXml     = @FechaXml,
@@ -225,7 +227,6 @@ BEGIN
             IF (@rc <> 0)
                 RAISERROR('Error en SP_ProcesarPagosDelDia',16,1);
 
-            -- Generar facturas de la fecha que se está ejecutando
             EXEC dbo.SP_GenerarFacturasDelDia
                 @inFecha        = @FechaActual,
                 @outResultCode  = @rc OUTPUT;
@@ -233,7 +234,6 @@ BEGIN
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarFacturasDelDia',16,1);
 
-            -- Generar cortas de la fecha que se está ejecutando
             EXEC dbo.SP_GenerarCortasDelDia
                 @inFecha        = @FechaActual,
                 @outResultCode  = @rc OUTPUT;
@@ -241,7 +241,6 @@ BEGIN
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarCortasDelDia',16,1);
 
-            -- Generar reconexiones de la fecha que se está ejecutando
             EXEC dbo.SP_GenerarReconexionesDelDia
                 @inFecha        = @FechaActual,
                 @outResultCode  = @rc OUTPUT;
@@ -249,13 +248,13 @@ BEGIN
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarReconexionesDelDia',16,1);
 
-
-            -- Se borra la fecha para continuar iterando con la siguiente fecha
+            /*=================================================
+                2.7) Siguiente fecha
+            =================================================*/
             DELETE FROM @Fechas
             WHERE Fecha = @FechaActual;
 
-        END;
-
+        END; -- WHILE
 
         SET @outResultCode = 0;
         RETURN;
@@ -278,12 +277,12 @@ BEGIN
         )
         VALUES
         (
-            'SP_CargarOperacionesDesdeXML',
+            'SP_CargarOperacionesDesdeXMLV2',
             ERROR_NUMBER(),
             ERROR_STATE(),
             ERROR_SEVERITY(),
             ERROR_LINE(),
-            'SP_CargarOperacionesDesdeXML',
+            'SP_CargarOperacionesDesdeXMLV2',
             ERROR_MESSAGE(),
             SYSDATETIME()
         );
