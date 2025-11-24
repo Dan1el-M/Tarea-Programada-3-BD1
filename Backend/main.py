@@ -238,6 +238,16 @@ def facturas_propiedad(numero_finca: str):
 
     return rs[0] if rs else []
 
+# ---- Detalle de una factura
+@app.get("/facturas/{numero_factura}/detalle")
+def detalle_factura(numero_factura: int):
+    rs, out_code = call_sp("SP_DetalleFactura", [numero_factura])
+
+    if out_code != 0:
+        return []
+
+    return rs[0] if rs else []
+
 # ---- Pagar factura más vieja (admin)
 @app.post("/facturas/pagar")
 def pagar_factura(data: PagarFacturaIn):
