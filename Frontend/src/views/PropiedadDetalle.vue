@@ -51,13 +51,9 @@
         </button>
       </div>
 
-      <!-- ✅ UN SOLO BOTÓN DE PAGAR -->
+      <!-- Botón pagar -->
       <div class="pay-bar" v-if="tab==='pendientes'">
-        <button
-          class="btn primary"
-          :disabled="!oldestPending"
-          @click="abrirPagoOldest"
-        >
+        <button class="btn primary" :disabled="!oldestPending" @click="abrirPagoOldest">
           Pagar factura más vieja pendiente
         </button>
 
@@ -74,9 +70,11 @@
             <th>Vence</th>
             <th>Total final</th>
             <th>Estado</th>
+            <th>Acción</th>
           </tr>
         </thead>
 
+        <!-- Pendientes -->
         <tbody v-if="tab==='pendientes'">
           <tr v-for="f in pendientes" :key="f.NumeroFactura">
             <td>{{ f.NumeroFactura }}</td>
@@ -84,26 +82,36 @@
             <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
             <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
             <td>Pendiente</td>
+
+            <td>
+              <button class="btn small" @click="abrirDetalle(f)">Ver detalle</button>
+            </td>
           </tr>
 
           <tr v-if="pendientes.length===0">
-            <td colspan="5" class="empty">No hay facturas pendientes</td>
+            <td colspan="6" class="empty">No hay facturas pendientes</td>
           </tr>
         </tbody>
 
+        <!-- Pagadas -->
         <tbody v-else>
-          <tr v-for="f in pagadas" :key="f.NumeroFactura">
-            <td>{{ f.NumeroFactura }}</td>
-            <td>{{ fmtDate(f.FechaFactura) }}</td>
-            <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
-            <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
-            <td>Pagada</td>
-          </tr>
+        <tr v-for="f in pagadas" :key="f.NumeroFactura">
+          <td>{{ f.NumeroFactura }}</td>
+          <td>{{ fmtDate(f.FechaFactura) }}</td>
+          <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
+          <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
+          <td>
+            Pagada<br />
+            <small style="color:#555;">
+              {{ fmtDate(f.FechaPago) }}
+            </small>
+          </td>
 
-          <tr v-if="pagadas.length===0">
-            <td colspan="5" class="empty">No hay facturas pagadas</td>
-          </tr>
-        </tbody>
+          <td>
+            <button class="btn small" @click="abrirDetalle(f)">Ver detalle</button>
+          </td>
+        </tr>
+      </tbody>
       </table>
 
       <p class="hint small" v-if="tab==='pendientes' && pendientes.length">
@@ -111,41 +119,36 @@
       </p>
     </section>
 
-    <!-- Modal pago -->
+    <!-- Modal PAGO -->
     <div v-if="showPago" class="modal-backdrop" @click.self="cerrarPago">
       <div class="modal">
         <h3>Confirmar pago</h3>
 
         <div class="modal-info">
-        <div><b>Finca:</b> {{ propiedad.NumeroFinca }}</div>
-        <div><b>#Factura:</b> {{ facturaActual.NumeroFactura }}</div>
-        <div><b>Fecha:</b> {{ fmtDate(facturaActual.FechaFactura) }}</div>
-        <div><b>Vence:</b> {{ fmtDate(facturaActual.FechaLimitePagar) }}</div>
-      </div>
+          <div><b>Finca:</b> {{ propiedad.NumeroFinca }}</div>
+          <div><b>#Factura:</b> {{ facturaActual.NumeroFactura }}</div>
+          <div><b>Fecha:</b> {{ fmtDate(facturaActual.FechaFactura) }}</div>
+          <div><b>Vence:</b> {{ fmtDate(facturaActual.FechaLimitePagar) }}</div>
+        </div>
 
-      <!-- ✅ DETALLE ANTES DE TOTAL FINAL -->
-      <div class="totals" v-if="detalle.length">
+        <div class="totals" v-if="detalle.length">
         <div class="row" v-for="(d, i) in detalle" :key="i">
-          <span>{{ d.NombreCC || d.Nombre || d.ConceptoCobroNombre || "Concepto" }}</span>
+          <span>
+            {{ d.NombreCC || d.Descripcion }}
+            <template v-if="d.ConsumoM3 != null">
+              ({{ d.ConsumoM3 }} m³)
+            </template>
+          </span>
+
           <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
         </div>
 
         <hr />
+      </div>
 
-        <div class="row big">
-          <span>Total</span>
-          <span>{{ fmtCRC(facturaActual.TotalAPagarFinal) }}</span>
+        <div v-else class="small" style="margin:.6rem 0; color:#777;">
+          No se encontraron líneas de detalle para esta factura.
         </div>
-      </div>
-
-      <div v-else class="small" style="margin:.6rem 0; color:#777;">
-        No se encontraron líneas de detalle para esta factura.
-      </div>
-
-      <!-- ✅ TOTAL FINAL DESPUÉS -->
-      <div class="modal-info" style="margin-top:.6rem;">
-        <div><b>Total final:</b> {{ fmtCRC(facturaActual.TotalAPagarFinal) }}</div>
-      </div>
 
         <div class="form">
           <label>Medio de pago</label>
@@ -154,29 +157,61 @@
             <label><input type="radio" v-model="medioPagoId" :value="2" /> Tarjeta</label>
           </div>
 
-          <!-- ✅ referencia auto y readonly -->
-          <label>Referencia</label>
+          <label>Referencia (auto-generada)</label>
           <div class="ref-box">{{ referencia }}</div>
-
         </div>
 
         <div class="modal-actions">
           <button class="btn" @click="cerrarPago">Cancelar</button>
-          <button class="btn primary" @click="confirmarPago">
-            Confirmar pago
-          </button>
+          <button class="btn primary" @click="confirmarPago">Confirmar pago</button>
         </div>
-
-        <p v-if="pagoError" class="error">{{ pagoError }}</p>
       </div>
     </div>
 
+    <!-- Modal DETALLE -->
+    <div v-if="showDetalle" class="modal-backdrop" @click.self="cerrarDetalle">
+      <div class="modal">
+        <h3>Detalle de factura</h3>
+
+        <div class="modal-info">
+          <div><b>#Factura:</b> {{ facturaDetalleActual.NumeroFactura }}</div>
+          <div><b>Fecha:</b> {{ fmtDate(facturaDetalleActual.FechaFactura) }}</div>
+          <div><b>Vence:</b> {{ fmtDate(facturaDetalleActual.FechaLimitePagar) }}</div>
+        </div>
+
+        <div class="totals" v-if="detalle.length">
+          <div class="row" v-for="(d, i) in detalle" :key="i">
+            <span>{{ d.Descripcion }}</span>
+
+            <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
+          </div>
+
+          <hr />
+
+          <div class="row big">
+            <span>Total</span>
+            <span>{{ fmtCRC(facturaDetalleActual.TotalAPagarFinal) }}</span>
+          </div>
+
+        </div>
+
+        <div v-else class="small" style="margin:.6rem 0; color:#777;">
+          No se encontraron líneas de detalle para esta factura.
+        </div>
+
+        <div class="modal-actions">
+          <button class="btn" @click="cerrarDetalle">Cerrar</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
     <div v-if="msg" class="toast">{{ msg }}</div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import api from "../axios";
 
@@ -187,124 +222,85 @@ const propiedad = ref(null);
 const facturas = ref([]);
 const tab = ref("pendientes");
 
-// modal pago
+const detalle = ref([]);
+
 const showPago = ref(false);
 const facturaActual = ref(null);
 const medioPagoId = ref(1);
 const referencia = ref("");
 const pagoError = ref("");
-const detalle = ref([]);
+
+const showDetalle = ref(false);
+const facturaDetalleActual = ref(null);
+
 const msg = ref("");
 
-const fmtCRC = (n) => {
-  if (n == null) return "-";
-  return new Intl.NumberFormat("es-CR", {
-    style: "currency",
-    currency: "CRC",
-    maximumFractionDigits: 0,
-  }).format(Number(n));
-};
-const fmtDate = (d) => d ? new Date(d).toLocaleDateString("es-CR") : "-";
+const fmtCRC = (n) => new Intl.NumberFormat("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 }).format(Number(n));
+const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("es-CR") : "-");
 
 const cargar = async () => {
   const finca = route.params.numeroFinca;
-
   const det = await api.get(`/propiedades/${finca}`);
-  propiedad.value = det.data?.propiedad ?? null;
+  propiedad.value = det.data.propiedad;
 
   const fac = await api.get(`/propiedades/${finca}/facturas`);
-  facturas.value = fac.data ?? [];
+  facturas.value = fac.data;
 };
 
-const cargarDetalleFactura = async (numFactura) => {
-  try {
-    const resp = await api.get(`/facturas/${numFactura}/detalle`);
-    console.log("RESP DETALLE API:", resp.data);
-    detalle.value = resp.data ?? [];
-  } catch (e) {
-    console.log("ERROR DETALLE:", e);
-    detalle.value = [];
-  }
+const cargarDetalleFactura = async (num) => {
+  const resp = await api.get(`/facturas/${num}/detalle`);
+  detalle.value = resp.data;
 };
 
-
-onMounted(async () => {
-  await cargar();
-});
-
-// --- computados ---
-const pendientes = computed(() =>
-  facturas.value.filter((f) => f.EstadoFacturaId === 1)
-);
-const pagadas = computed(() =>
-  facturas.value.filter((f) => f.EstadoFacturaId !== 1)
+// Computados
+const pendientes = computed(() => facturas.value.filter(f => f.EstadoFacturaId === 1));
+const pagadas     = computed(() => facturas.value.filter(f => f.EstadoFacturaId !== 1));
+const oldestPending = computed(() =>
+  pendientes.value.length ? [...pendientes.value].sort((a,b) => new Date(a.FechaFactura)-new Date(b.FechaFactura))[0] : null
 );
 
-// más vieja pendiente por FechaFactura
-const oldestPending = computed(() => {
-  if (!pendientes.value.length) return null;
-  const sorted = [...pendientes.value].sort(
-    (a, b) => new Date(a.FechaFactura) - new Date(b.FechaFactura)
-  );
-  return sorted[0];
-});
+const usoNombre = computed(() => propiedad.value?.TipoUsoNombre);
+const zonaNombre = computed(() => propiedad.value?.TipoZonaNombre);
 
-// ya ahora vienen del SP con nombre
-const usoNombre = computed(() => propiedad.value?.TipoUsoNombre || "-");
-const zonaNombre = computed(() => propiedad.value?.TipoZonaNombre || "-");
+// Acciones
+const abrirDetalle = async (f) => {
+  facturaDetalleActual.value = f;
+  await cargarDetalleFactura(f.NumeroFactura);
+  showDetalle.value = true;
+};
+const cerrarDetalle = () => (showDetalle.value = false);
 
-// --- acciones ---
 const abrirPagoOldest = async () => {
-  if (!oldestPending.value) return;
-
   facturaActual.value = oldestPending.value;
-
-  // ✅ referencia auto
-  referencia.value = genReferencia(
-    propiedad.value.NumeroFinca,
-    facturaActual.value.NumeroFactura
-  );
-
-  // ✅ cargar detalle
+  referencia.value = `REF-${propiedad.value.NumeroFinca.replace(/[^A-Za-z0-9]/g,"")}-${facturaActual.value.NumeroFactura}-${Date.now()}`;
   await cargarDetalleFactura(facturaActual.value.NumeroFactura);
-
-  pagoError.value = "";
   showPago.value = true;
 };
 
-// referencia más linda y única
-const genReferencia = (numFinca, numFactura) => {
-  return `REF-${numFinca.replace(/[^A-Za-z0-9]/g,"")}-${numFactura}-${Date.now()}`;
-};
-
-const cerrarPago = () => showPago.value = false;
+const cerrarPago = () => (showPago.value = false);
 
 const confirmarPago = async () => {
-  pagoError.value = "";
   try {
     await api.post("/facturas/pagar", {
       numeroFinca: propiedad.value.NumeroFinca,
       tipoMedioPagoId: medioPagoId.value,
       numeroReferencia: referencia.value,
-      fechaPago: null,
+      fechaPago: null
     });
 
     msg.value = `Pago realizado correctamente Ref: ${referencia.value}`;
+    setTimeout(() => (msg.value = ""), 1500);
+
     showPago.value = false;
-
-    setTimeout(() => {
-      msg.value = "";
-    }, 1500); 
-
-    // refresh facturas
-    const fac = await api.get(`/propiedades/${propiedad.value.NumeroFinca}/facturas`);
-    facturas.value = fac.data ?? [];
+    cargar();
   } catch (e) {
-    pagoError.value = e?.response?.data?.detail || "No se pudo pagar la factura.";
+    pagoError.value = "Error al procesar el pago";
   }
 };
 
 const volver = () => router.push("/propiedades");
+
+onMounted(cargar);
 </script>
 
 <style scoped>
