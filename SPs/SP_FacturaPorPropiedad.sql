@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_FacturasPorPropiedad]    Script Date: 23/11/2025 17:09:33 ******/
+/****** Object:  StoredProcedure [dbo].[SP_FacturasPorPropiedad]    Script Date: 24/11/2025 17:41:51 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -15,7 +15,7 @@ CREATE   PROCEDURE [dbo].[SP_FacturasPorPropiedad]
 )
 
 /*
-SP que me muestras las facturas pendientes de una propiedad, las muestra ya ordenadas por la más viejas primero
+SP que me muestras las facturas  de una propiedad, las muestra ya ordenadas
 */
 AS
 BEGIN
@@ -31,18 +31,26 @@ BEGIN
         SET @outResultCode = 0;
 
         SELECT
-            f.Id, f.PropiedadId, f.FechaFactura, f.FechaLimitePagar,
-            f.TotalAPagarOriginal, f.TotalAPagarFinal, f.EstadoFacturaId
+            f.Id AS NumeroFactura
+            , f.FechaFactura
+            , f.FechaLimitePagar
+            , f.TotalAPagarFinal
+            , f.EstadoFacturaId
+            , MAX(p.FechaPago) AS FechaPago
         FROM dbo.Factura f
+        LEFT JOIN dbo.Pago p
+            ON p.FacturaId = f.Id
         WHERE f.PropiedadId = @inNumeroFinca
-          AND f.EstadoFacturaId = 1  -- pendientes
-        ORDER BY f.FechaFactura, f.Id;
+        GROUP BY
+            f.Id, f.FechaFactura, f.FechaLimitePagar,
+            f.TotalAPagarFinal, f.EstadoFacturaId
+        ORDER BY f.FechaFactura DESC;
 
     END TRY
     BEGIN CATCH
         SET @outResultCode = 50053;
 
-        INSERT dbo.DBError(
+        INSERT INTO dbo.DBError(
             UserName
             , Number
             , State
@@ -63,6 +71,8 @@ BEGIN
             , ERROR_MESSAGE()
             , SYSDATETIME()
         );
+
+        THROW;
     END CATCH
 END;
 GO

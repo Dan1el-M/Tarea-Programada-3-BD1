@@ -1,24 +1,32 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_InicioSesionAdmin]    Script Date: 23/11/2025 17:10:46 ******/
+/****** Object:  StoredProcedure [dbo].[SP_InicioSesionAdmin]    Script Date: 24/11/2025 19:16:23 ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
 
-CREATE   PROCEDURE [dbo].[SP_InicioSesionAdmin]
+CREATE PROCEDURE [dbo].[SP_InicioSesionAdmin]
 (
-    @inNombreUsuario VARCHAR(64),
-    @inContrasena    VARCHAR(128),
-    @outResultCode   INT OUTPUT
+     @inNombreUsuario VARCHAR(64)
+    ,@inContrasena    VARCHAR(128)
+    ,@outResultCode   INT OUTPUT
 )
+/*
+SP que valida credenciales del usuario administrador.
+Retorna:
+    0 -> credenciales correctas
+    1 -> credenciales inválidas
+    50050 -> error interno
+*/
 AS
 BEGIN
     SET NOCOUNT ON;
 
     BEGIN TRY
+        
         IF EXISTS (
             SELECT 1
             FROM dbo.Usuario u
@@ -26,42 +34,47 @@ BEGIN
               AND u.Contrasena    = @inContrasena
         )
         BEGIN
-            SET @outResultCode = 0; -- OK
+            SET @outResultCode = 0;
 
-            -- opcional: devolver el admin logueado
-            SELECT u.Id, u.NombreUsuario
+            SELECT 
+                 u.Id
+                ,u.NombreUsuario
             FROM dbo.Usuario u
             WHERE u.NombreUsuario = @inNombreUsuario;
         END
         ELSE
         BEGIN
-            SET @outResultCode = 1; -- credenciales inválidas
+            SET @outResultCode = 1;
         END
+
     END TRY
     BEGIN CATCH
+        
         SET @outResultCode = 50050;
 
-        INSERT dbo.DBError(
-            UserName
-            , Number
-            , State
-            , Severity
-            , Line
+        INSERT INTO dbo.DBError(
+             UserName
+            ,Number
+            ,State
+            ,Severity
+            ,Line
             ,[Procedure]
-            , Message
-            , DateTime
+            ,Message
+            ,DateTime
         )
         VALUES(
-            'SP_InicioSesionAdmin'
-            ,
-            ERROR_NUMBER()
-            , ERROR_STATE()
-            , ERROR_SEVERITY()
-            , ERROR_LINE()
-            , 'SP_InicioSesionAdmin'
-            , ERROR_MESSAGE()
-            , SYSDATETIME()
+             'SP_InicioSesionAdmin'
+            ,ERROR_NUMBER()
+            ,ERROR_STATE()
+            ,ERROR_SEVERITY()
+            ,ERROR_LINE()
+            ,'SP_InicioSesionAdmin'
+            ,ERROR_MESSAGE()
+            ,SYSDATETIME()
         );
+
+        THROW;
+
     END CATCH
 END;
 GO
