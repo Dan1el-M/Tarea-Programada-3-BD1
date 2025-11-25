@@ -197,9 +197,17 @@
           <hr />
 
           <div class="row big">
-            <span>Total</span>
-            <span>{{ fmtCRC(facturaDetalleActual.TotalAPagarFinal) }}</span>
-          </div>
+          <span>Total</span>
+          <span>
+            {{ fmtCRC(
+              facturaDetalleActual?.TotalCalculado
+                ?? facturaDetalleActual?.TotalGuardado
+                ?? facturaDetalleActual?.TotalOriginal
+                ?? 0
+            ) }}
+          </span>
+        </div>
+
         </div>
 
         <div v-else class="small" style="margin:.6rem 0; color:#777;">
