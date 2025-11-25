@@ -68,7 +68,7 @@
             <th>#Factura</th>
             <th>Fecha</th>
             <th>Vence</th>
-            <th>Total final</th>
+            <th>Total Original</th>
             <th>Estado</th>
             <th>Acción</th>
           </tr>
@@ -80,7 +80,8 @@
             <td>{{ f.NumeroFactura }}</td>
             <td>{{ fmtDate(f.FechaFactura) }}</td>
             <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
-            <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
+            <!-- por ahora usamos TotalAPagarFinal; si tu API tiene TotalInicial, lo cambias aquí -->
+            <td>{{ fmtCRC(f.TotalAPagarOriginal) }}</td>
             <td>Pendiente</td>
 
             <td>
@@ -99,7 +100,7 @@
             <td>{{ f.NumeroFactura }}</td>
             <td>{{ fmtDate(f.FechaFactura) }}</td>
             <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
-            <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
+            <td>{{ fmtCRC(f.TotalAPagarOriginal) }}</td>
             <td>
               Pagada<br />
               <small style="color:#555;">
@@ -110,6 +111,10 @@
             <td>
               <button class="btn small" @click="abrirDetalle(f)">Ver detalle</button>
             </td>
+          </tr>
+
+          <tr v-if="pagadas.length === 0">
+            <td colspan="6" class="empty">No hay facturas pagadas</td>
           </tr>
         </tbody>
       </table>
@@ -131,15 +136,14 @@
           <div><b>Vence:</b> {{ fmtDate(facturaActual.FechaLimitePagar) }}</div>
         </div>
 
-        <div class="totals" v-if="detalle.length">
-          <div class="row" v-for="(d, i) in detalle" :key="i">
+        <div class="totals" v-if="detallePago.length">
+          <div class="row" v-for="(d, i) in detallePago" :key="i">
             <span>
               {{ d.NombreCC || d.Descripcion }}
               <template v-if="d.ConsumoM3 != null">
                 ({{ d.ConsumoM3 }} m³)
               </template>
             </span>
-
             <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
           </div>
 
@@ -162,7 +166,7 @@
             <label><input type="radio" v-model="medioPagoId" :value="2" /> Tarjeta</label>
           </div>
 
-          <label>Referencia </label>
+          <label>Referencia</label>
           <div class="ref-box">{{ referencia }}</div>
         </div>
 
@@ -184,8 +188,8 @@
           <div><b>Vence:</b> {{ fmtDate(facturaDetalleActual.FechaLimitePagar) }}</div>
         </div>
 
-        <div class="totals" v-if="detalle.length">
-          <div class="row" v-for="(d, i) in detalle" :key="i">
+        <div class="totals" v-if="detalleFactura.length">
+          <div class="row" v-for="(d, i) in detalleFactura" :key="i">
             <span>{{ d.Descripcion }}</span>
             <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
           </div>
@@ -225,36 +229,31 @@ const propiedad = ref(null);
 const facturas = ref([]);
 const tab = ref("pendientes");
 
-const detalle = ref([]);
+// detalles separados
+const detalleFactura = ref([]);  // para "Ver detalle"
+const detallePago    = ref([]);  // para "Confirmar pago"
 
 const showPago = ref(false);
 const facturaActual = ref(null);
 const medioPagoId = ref(1);
 const referencia = ref("");
-const totalSimulado = ref(0);      // total de la simulación (base + moras + reconexión)
+const totalSimulado = ref(0);
 
 const showDetalle = ref(false);
 const facturaDetalleActual = ref(null);
 
 const msg = ref("");
 
-
 // Helpers
 const fmtCRC = (n) =>
   new Intl.NumberFormat("es-CR", {
     style: "currency",
     currency: "CRC",
-    maximumFractionDigits: 0
+    maximumFractionDigits: 0,
   }).format(Number(n || 0));
 
 const fmtDate = (d) => {
   if (!d) return "-";
-  // si viene como string "YYYY-MM-DD"
-
-//const fmtCRC = (n) => new Intl.NumberFormat("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 }).format(Number(n));
-//const fmtDate = (d) => {
- // if (!d) return "-";
-
   const [y, m, day] = d.split("-").map(Number);
   return new Date(y, m - 1, day).toLocaleDateString("es-CR");
 };
@@ -271,7 +270,7 @@ const cargar = async () => {
 
 const cargarDetalleFactura = async (num) => {
   const resp = await api.get(`/facturas/${num}/detalle`);
-  detalle.value = resp.data;
+  detalleFactura.value = resp.data ?? [];
 };
 
 // Computados
@@ -303,11 +302,11 @@ const cerrarDetalle = () => {
   showDetalle.value = false;
 };
 
+// RCTP-AAAAMM-F-0004
 const genReferencia = (numFinca, fechaFactura) => {
-  const finca = numFinca;
   const [y, m] = fechaFactura.split("-");
   const anioMes = `${y}${m}`;
-  return `RCTP-${anioMes}-${finca}`;
+  return `RCTP-${anioMes}-${numFinca}`;
 };
 
 const abrirPagoOldest = async () => {
@@ -318,13 +317,11 @@ const abrirPagoOldest = async () => {
   referencia.value = genReferencia(finca, facturaActual.value.FechaFactura);
 
   try {
-    // Llamar SP de simulación
     const { data } = await api.post("/facturas/simular-pago", {
       numeroFinca: finca,
-      fechaPago: null
+      fechaPago: null,
     });
 
-    // Construimos el detalle para el modal: CC base + líneas de intereses y reconexión
     const lineas = [...(data.conceptosBase || [])];
 
     if (data.interesesMoratorios && Number(data.interesesMoratorios) !== 0) {
@@ -332,7 +329,7 @@ const abrirPagoOldest = async () => {
         NombreCC: "Intereses moratorios",
         Descripcion: "Intereses moratorios",
         Monto: data.interesesMoratorios,
-        ConsumoM3: null
+        ConsumoM3: null,
       });
     }
 
@@ -341,11 +338,11 @@ const abrirPagoOldest = async () => {
         NombreCC: "Reconexión de agua",
         Descripcion: "Reconexión de agua",
         Monto: data.reconexion,
-        ConsumoM3: null
+        ConsumoM3: null,
       });
     }
 
-    detalle.value = lineas;
+    detallePago.value = lineas;
     totalSimulado.value = data.totalSimulado ?? 0;
 
     showPago.value = true;
@@ -366,14 +363,14 @@ const confirmarPago = async () => {
       numeroFinca: propiedad.value.NumeroFinca,
       tipoMedioPagoId: medioPagoId.value,
       numeroReferencia: referencia.value,
-      fechaPago: null
+      fechaPago: null,
     });
 
     msg.value = `Pago realizado correctamente Ref: ${referencia.value}`;
     setTimeout(() => (msg.value = ""), 1500);
 
     showPago.value = false;
-    await cargar(); // recarga facturas
+    await cargar();
   } catch (e) {
     console.error(e);
     msg.value = "Error al procesar el pago";
@@ -426,13 +423,11 @@ onMounted(cargar);
 .hint { color:#666; margin-top:.6rem; }
 .hint.small, .small { font-size:.9rem; color:#666; }
 
-/* Detalle */
 .totals { margin:.8rem 0; }
 .row { display:flex; justify-content:space-between; padding:.2rem 0; }
 .row.big { font-weight:800; font-size:1.05rem; }
 hr { border:none; border-top:1px solid #eee; margin:.4rem 0; }
 
-/* Modal */
 .modal-backdrop{
   position:fixed; inset:0; background:rgba(0,0,0,.35);
   display:grid; place-items:center; padding:1rem;
@@ -456,5 +451,9 @@ hr { border:none; border-top:1px solid #eee; margin:.4rem 0; }
   position:fixed; bottom:18px; right:18px;
   background:#111827; color:white; padding:.7rem 1rem;
   border-radius:10px; box-shadow:0 6px 20px rgba(0,0,0,.25);
+}
+.ref-box{
+  margin-top:.25rem; padding:.45rem .6rem;
+  background:#f3f4f6; border-radius:8px; font-family:monospace;
 }
 </style>
