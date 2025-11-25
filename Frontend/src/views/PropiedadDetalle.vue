@@ -236,7 +236,11 @@ const facturaDetalleActual = ref(null);
 const msg = ref("");
 
 const fmtCRC = (n) => new Intl.NumberFormat("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 }).format(Number(n));
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("es-CR") : "-");
+const fmtDate = (d) => {
+  if (!d) return "-";
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString("es-CR");
+};
 
 const cargar = async () => {
   const finca = route.params.numeroFinca;
