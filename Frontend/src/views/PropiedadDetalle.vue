@@ -238,6 +238,7 @@ const facturaDetalleActual = ref(null);
 
 const msg = ref("");
 
+
 // Helpers
 const fmtCRC = (n) =>
   new Intl.NumberFormat("es-CR", {
@@ -249,6 +250,11 @@ const fmtCRC = (n) =>
 const fmtDate = (d) => {
   if (!d) return "-";
   // si viene como string "YYYY-MM-DD"
+
+//const fmtCRC = (n) => new Intl.NumberFormat("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 }).format(Number(n));
+//const fmtDate = (d) => {
+ // if (!d) return "-";
+
   const [y, m, day] = d.split("-").map(Number);
   return new Date(y, m - 1, day).toLocaleDateString("es-CR");
 };
