@@ -95,23 +95,23 @@
 
         <!-- Pagadas -->
         <tbody v-else>
-        <tr v-for="f in pagadas" :key="f.NumeroFactura">
-          <td>{{ f.NumeroFactura }}</td>
-          <td>{{ fmtDate(f.FechaFactura) }}</td>
-          <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
-          <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
-          <td>
-            Pagada<br />
-            <small style="color:#555;">
-              {{ fmtDate(f.FechaPago) }}
-            </small>
-          </td>
+          <tr v-for="f in pagadas" :key="f.NumeroFactura">
+            <td>{{ f.NumeroFactura }}</td>
+            <td>{{ fmtDate(f.FechaFactura) }}</td>
+            <td>{{ fmtDate(f.FechaLimitePagar) }}</td>
+            <td>{{ fmtCRC(f.TotalAPagarFinal) }}</td>
+            <td>
+              Pagada<br />
+              <small style="color:#555;">
+                {{ fmtDate(f.FechaPago) }}
+              </small>
+            </td>
 
-          <td>
-            <button class="btn small" @click="abrirDetalle(f)">Ver detalle</button>
-          </td>
-        </tr>
-      </tbody>
+            <td>
+              <button class="btn small" @click="abrirDetalle(f)">Ver detalle</button>
+            </td>
+          </tr>
+        </tbody>
       </table>
 
       <p class="hint small" v-if="tab==='pendientes' && pendientes.length">
@@ -132,19 +132,24 @@
         </div>
 
         <div class="totals" v-if="detalle.length">
-        <div class="row" v-for="(d, i) in detalle" :key="i">
-          <span>
-            {{ d.NombreCC || d.Descripcion }}
-            <template v-if="d.ConsumoM3 != null">
-              ({{ d.ConsumoM3 }} m³)
-            </template>
-          </span>
+          <div class="row" v-for="(d, i) in detalle" :key="i">
+            <span>
+              {{ d.NombreCC || d.Descripcion }}
+              <template v-if="d.ConsumoM3 != null">
+                ({{ d.ConsumoM3 }} m³)
+              </template>
+            </span>
 
-          <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
+            <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
+          </div>
+
+          <hr />
+
+          <div class="row big">
+            <span>Total a pagar</span>
+            <span>{{ fmtCRC(totalSimulado) }}</span>
+          </div>
         </div>
-
-        <hr />
-      </div>
 
         <div v-else class="small" style="margin:.6rem 0; color:#777;">
           No se encontraron líneas de detalle para esta factura.
@@ -157,7 +162,7 @@
             <label><input type="radio" v-model="medioPagoId" :value="2" /> Tarjeta</label>
           </div>
 
-          <label>Referencia (auto-generada)</label>
+          <label>Referencia </label>
           <div class="ref-box">{{ referencia }}</div>
         </div>
 
@@ -182,7 +187,6 @@
         <div class="totals" v-if="detalle.length">
           <div class="row" v-for="(d, i) in detalle" :key="i">
             <span>{{ d.Descripcion }}</span>
-
             <span>{{ fmtCRC(d.Monto ?? d.Total ?? d.Valor ?? d.MontoCC ?? 0) }}</span>
           </div>
 
@@ -192,7 +196,6 @@
             <span>Total</span>
             <span>{{ fmtCRC(facturaDetalleActual.TotalAPagarFinal) }}</span>
           </div>
-
         </div>
 
         <div v-else class="small" style="margin:.6rem 0; color:#777;">
@@ -228,16 +231,29 @@ const showPago = ref(false);
 const facturaActual = ref(null);
 const medioPagoId = ref(1);
 const referencia = ref("");
-const pagoError = ref("");
+const totalSimulado = ref(0);      // total de la simulación (base + moras + reconexión)
 
 const showDetalle = ref(false);
 const facturaDetalleActual = ref(null);
 
 const msg = ref("");
 
-const fmtCRC = (n) => new Intl.NumberFormat("es-CR", { style: "currency", currency: "CRC", maximumFractionDigits: 0 }).format(Number(n));
-const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("es-CR") : "-");
+// Helpers
+const fmtCRC = (n) =>
+  new Intl.NumberFormat("es-CR", {
+    style: "currency",
+    currency: "CRC",
+    maximumFractionDigits: 0
+  }).format(Number(n || 0));
 
+const fmtDate = (d) => {
+  if (!d) return "-";
+  // si viene como string "YYYY-MM-DD"
+  const [y, m, day] = d.split("-").map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString("es-CR");
+};
+
+// Cargas iniciales
 const cargar = async () => {
   const finca = route.params.numeroFinca;
   const det = await api.get(`/propiedades/${finca}`);
@@ -253,10 +269,18 @@ const cargarDetalleFactura = async (num) => {
 };
 
 // Computados
-const pendientes = computed(() => facturas.value.filter(f => f.EstadoFacturaId === 1));
-const pagadas     = computed(() => facturas.value.filter(f => f.EstadoFacturaId !== 1));
+const pendientes = computed(() =>
+  facturas.value.filter((f) => f.EstadoFacturaId === 1)
+);
+const pagadas = computed(() =>
+  facturas.value.filter((f) => f.EstadoFacturaId !== 1)
+);
 const oldestPending = computed(() =>
-  pendientes.value.length ? [...pendientes.value].sort((a,b) => new Date(a.FechaFactura)-new Date(b.FechaFactura))[0] : null
+  pendientes.value.length
+    ? [...pendientes.value].sort(
+        (a, b) => new Date(a.FechaFactura) - new Date(b.FechaFactura)
+      )[0]
+    : null
 );
 
 const usoNombre = computed(() => propiedad.value?.TipoUsoNombre);
@@ -268,16 +292,67 @@ const abrirDetalle = async (f) => {
   await cargarDetalleFactura(f.NumeroFactura);
   showDetalle.value = true;
 };
-const cerrarDetalle = () => (showDetalle.value = false);
 
-const abrirPagoOldest = async () => {
-  facturaActual.value = oldestPending.value;
-  referencia.value = `REF-${propiedad.value.NumeroFinca.replace(/[^A-Za-z0-9]/g,"")}-${facturaActual.value.NumeroFactura}-${Date.now()}`;
-  await cargarDetalleFactura(facturaActual.value.NumeroFactura);
-  showPago.value = true;
+const cerrarDetalle = () => {
+  showDetalle.value = false;
 };
 
-const cerrarPago = () => (showPago.value = false);
+const genReferencia = (numFinca, fechaFactura) => {
+  const finca = numFinca;
+  const [y, m] = fechaFactura.split("-");
+  const anioMes = `${y}${m}`;
+  return `RCTP-${anioMes}-${finca}`;
+};
+
+const abrirPagoOldest = async () => {
+  const finca = propiedad.value?.NumeroFinca;
+  if (!finca || !oldestPending.value) return;
+
+  facturaActual.value = oldestPending.value;
+  referencia.value = genReferencia(finca, facturaActual.value.FechaFactura);
+
+  try {
+    // Llamar SP de simulación
+    const { data } = await api.post("/facturas/simular-pago", {
+      numeroFinca: finca,
+      fechaPago: null
+    });
+
+    // Construimos el detalle para el modal: CC base + líneas de intereses y reconexión
+    const lineas = [...(data.conceptosBase || [])];
+
+    if (data.interesesMoratorios && Number(data.interesesMoratorios) !== 0) {
+      lineas.push({
+        NombreCC: "Intereses moratorios",
+        Descripcion: "Intereses moratorios",
+        Monto: data.interesesMoratorios,
+        ConsumoM3: null
+      });
+    }
+
+    if (data.reconexion && Number(data.reconexion) !== 0) {
+      lineas.push({
+        NombreCC: "Reconexión de agua",
+        Descripcion: "Reconexión de agua",
+        Monto: data.reconexion,
+        ConsumoM3: null
+      });
+    }
+
+    detalle.value = lineas;
+    totalSimulado.value = data.totalSimulado ?? 0;
+
+    showPago.value = true;
+  } catch (e) {
+    console.error(e);
+    msg.value = "Error al simular el pago";
+    setTimeout(() => (msg.value = ""), 2000);
+  }
+};
+
+const cerrarPago = () => {
+  showPago.value = false;
+};
 
 const confirmarPago = async () => {
   try {
@@ -292,9 +367,11 @@ const confirmarPago = async () => {
     setTimeout(() => (msg.value = ""), 1500);
 
     showPago.value = false;
-    cargar();
+    await cargar(); // recarga facturas
   } catch (e) {
-    pagoError.value = "Error al procesar el pago";
+    console.error(e);
+    msg.value = "Error al procesar el pago";
+    setTimeout(() => (msg.value = ""), 2000);
   }
 };
 
@@ -343,7 +420,7 @@ onMounted(cargar);
 .hint { color:#666; margin-top:.6rem; }
 .hint.small, .small { font-size:.9rem; color:#666; }
 
-/* ✅ Detalle */
+/* Detalle */
 .totals { margin:.8rem 0; }
 .row { display:flex; justify-content:space-between; padding:.2rem 0; }
 .row.big { font-weight:800; font-size:1.05rem; }

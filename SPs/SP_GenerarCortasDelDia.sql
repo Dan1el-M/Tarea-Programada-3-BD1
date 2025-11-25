@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_GenerarCortasDelDia]    Script Date: 23/11/2025 17:09:53 ******/
+/****** Object:  StoredProcedure [dbo].[SP_GenerarCortasDelDia]    Script Date: 24/11/2025 18:09:15 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -19,9 +19,8 @@ BEGIN
 
     BEGIN TRY
 
-        ------------------------------------------------------------
+   
         -- 1) Leer DiasGraciaCorta desde ParametrosSistema
-        ------------------------------------------------------------
         DECLARE @DiasGracia INT =
         (
             SELECT TRY_CONVERT(INT, Valor)
@@ -30,21 +29,19 @@ BEGIN
         );
 
         IF @DiasGracia IS NULL
-            SET @DiasGracia = 10;  -- respaldo por si no está cargado
+            SET @DiasGracia = 10;  
 
         BEGIN TRANSACTION;
 
-        ------------------------------------------------------------
         -- 2) Buscar facturas vencidas + gracia, pendientes,
-        --    y escoger SOLO la más vieja por propiedad
-        ------------------------------------------------------------
+        --    y escoger solo la más vieja por propiedad
         ;WITH FacturasCandidatas AS (
             SELECT
-                f.Id AS FacturaId,
-                f.PropiedadId,
-                f.FechaFactura,
-                f.FechaLimitePagar,
-                ROW_NUMBER() OVER(
+                f.Id AS FacturaId
+                ,f.PropiedadId
+                ,f.FechaFactura
+                ,f.FechaLimitePagar
+                , ROW_NUMBER() OVER(
                     PARTITION BY f.PropiedadId
                     ORDER BY f.FechaFactura, f.Id
                 ) AS rn
@@ -53,18 +50,19 @@ BEGIN
               AND DATEADD(DAY, @DiasGracia, f.FechaLimitePagar) < @inFecha
         )
         INSERT INTO dbo.OrdenCorta(
-            PropiedadId,
-            FacturaId,
-            FechaGenerada,
-            FechaEjecutada,
-            Estado
+            PropiedadId
+            ,FacturaId
+            ,FechaGenerada
+            ,FechaEjecutada
+            ,Estado
         )
         SELECT
-            fc.PropiedadId,
-            fc.FacturaId,
-            @inFecha,
-            NULL,
-            1   -- pendiente
+            fc.PropiedadId
+            ,fc.FacturaId
+            ,@inFecha
+            ,NULL
+            ,1   
+
         FROM FacturasCandidatas fc
         WHERE fc.rn = 1  -- solo la más vieja por finca
           AND NOT EXISTS (
@@ -86,15 +84,28 @@ BEGIN
         SET @outResultCode = 50030;
 
         INSERT INTO dbo.DBError(
-            UserName, Number, State, Severity, Line,
-            [Procedure], Message, DateTime
-        )
+                    UserName
+                    , Number
+                    , State
+                    , Severity
+                    , Line
+                    , [Procedure]
+                    , Message
+                    , DateTime
+                    )
         VALUES(
-            'SP_GenerarCortasDelDia',
-            ERROR_NUMBER(), ERROR_STATE(), ERROR_SEVERITY(), ERROR_LINE(),
-            'SP_GenerarCortasDelDia',
-            ERROR_MESSAGE(), SYSDATETIME()
-        );
+            'SP_GenerarCortasDelDia'
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            ,'SP_GenerarCortasDelDia'
+            , ERROR_MESSAGE()
+            , SYSDATETIME()
+             );
+
+        THROW;
+
     END CATCH
 END;
 GO

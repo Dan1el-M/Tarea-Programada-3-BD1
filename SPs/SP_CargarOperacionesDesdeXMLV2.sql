@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXMLV2]    Script Date: 23/11/2025 17:08:55 ******/
+/****** Object:  StoredProcedure [dbo].[SP_CargarOperacionesDesdeXMLV2]    Script Date: 24/11/2025 17:17:08 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -20,9 +20,7 @@ BEGIN
 
     BEGIN TRY
 
-        /*=================================================
-            1) Partir XML por fechas
-        =================================================*/
+        --1) Partir XML por fechas
         DECLARE @Fechas TABLE
         (
             Fecha DATE PRIMARY KEY,
@@ -35,39 +33,40 @@ BEGIN
             F.query('.')            AS Nodo
         FROM @inXmlOperaciones.nodes('/Operaciones/FechaOperacion') AS T(F);
 
-        /*=================================================
-            2) Iterar cronológicamente
-        =================================================*/
+        
+         --2) Iterar cronológicamente
         DECLARE
-            @FechaActual DATE,
-            @FechaXml    XML,
-            @rc          INT;
+            @FechaActual DATE
+            ,@FechaXml    XML
+            ,@rc          INT;
 
         WHILE EXISTS (SELECT 1 FROM @Fechas)
         BEGIN
+            BEGIN TRANSACTION;
+
             SELECT TOP (1)
                 @FechaActual = Fecha,
                 @FechaXml    = Nodo
             FROM @Fechas
             ORDER BY Fecha;
 
-            /*=================================================
-                2.1) Insertar Personas (solo nuevas)
-            =================================================*/
+   
+            --Insertar Personas (solo nuevas)
             INSERT INTO dbo.Persona
             (
-                ValorDocumento,
-                Nombre,
-                Email,
-                Telefono,
-                Fecha
+                ValorDocumento
+                ,Nombre
+                ,Email
+                ,Telefono
+                ,Fecha
             )
             SELECT
-                P.value('@valorDocumento','varchar(64)'),
-                P.value('@nombre','nvarchar(128)'),
-                P.value('@email','nvarchar(128)'),
-                P.value('@telefono','varchar(32)'),
-                @FechaActual
+                 P.value('@valorDocumento','varchar(64)')
+                ,P.value('@nombre','nvarchar(128)')
+                ,P.value('@email','nvarchar(128)')
+                ,P.value('@telefono','varchar(32)')
+                , @FechaActual
+
             FROM @FechaXml.nodes('/FechaOperacion/Personas/Persona') AS T(P)
             WHERE NOT EXISTS
             (
@@ -77,28 +76,26 @@ BEGIN
                       T.P.value('@valorDocumento','varchar(64)')
             );
 
-            /*=================================================
-                2.2) Insertar Propiedades (solo nuevas)
-                Nota: el TRG_DespuesDeInsert asigna CC base
-            =================================================*/
+
+             --Insertar Propiedades (solo nuevas)
             INSERT INTO dbo.Propiedad
             (
-                NumeroFinca,
-                NumeroMedidor,
-                MetrosCuadrados,
-                TipoUsoId,
-                TipoZonaId,
-                ValorFiscal,
-                FechaRegistro
+                 NumeroFinca
+                ,NumeroMedidor
+                ,MetrosCuadrados
+                ,TipoUsoId
+                ,TipoZonaId
+                ,ValorFiscal
+                ,FechaRegistro
             )
             SELECT
-                PR.value('@numeroFinca','varchar(64)'),
-                PR.value('@numeroMedidor','varchar(32)'),
-                PR.value('@metrosCuadrados','decimal(10,2)'),
-                PR.value('@tipoUsoId','int'),
-                PR.value('@tipoZonaId','int'),
-                PR.value('@valorFiscal','money'),
-                PR.value('@fechaRegistro','date')
+                 PR.value('@numeroFinca','varchar(64)')
+                ,PR.value('@numeroMedidor','varchar(32)')
+                ,PR.value('@metrosCuadrados','decimal(10,2)')
+                ,PR.value('@tipoUsoId','int')
+                ,PR.value('@tipoZonaId','int')
+                ,PR.value('@valorFiscal','money')
+                ,PR.value('@fechaRegistro','date')
             FROM @FechaXml.nodes('/FechaOperacion/Propiedades/Propiedad') AS T(PR)
             WHERE NOT EXISTS
             (
@@ -108,29 +105,31 @@ BEGIN
                       T.PR.value('@numeroFinca','varchar(64)')
             );
 
-            /*=================================================
-                2.3) PropiedadPersona (asociar / desasociar)
-            =================================================*/
+       
+            -- PropiedadPersona (asociar / desasociar)
+      
             -- Asociar
             INSERT INTO dbo.PropiedadPersona
             (
-                PropiedadId,
-                PersonaId,
-                FechaInicio,
-                FechaFin,
-                TipoAsociacionId
+                PropiedadId
+                ,PersonaId
+                ,FechaInicio
+                ,FechaFin
+                ,TipoAsociacionId
             )
             SELECT
-                p.NumeroFinca,
-                per.Id,
-                @FechaActual,
-                NULL,
-                1
+                p.NumeroFinca
+                ,per.Id
+                ,@FechaActual
+                ,NULL
+                ,1
             FROM @FechaXml.nodes('/FechaOperacion/PropiedadPersona/Movimiento') AS T(M)
             INNER JOIN dbo.Propiedad p
-                ON p.NumeroFinca = T.M.value('@numeroFinca','varchar(64)')
+                ON p.NumeroFinca = 
+                            T.M.value('@numeroFinca','varchar(64)')
             INNER JOIN dbo.Persona per
-                ON per.ValorDocumento = T.M.value('@valorDocumento','varchar(64)')
+                ON per.ValorDocumento = 
+                            T.M.value('@valorDocumento','varchar(64)')
             WHERE T.M.value('@tipoAsociacionId','int') = 1
               AND NOT EXISTS
               (
@@ -147,37 +146,41 @@ BEGIN
                 pp.FechaFin         = @FechaActual,
                 pp.TipoAsociacionId = 2
             FROM dbo.PropiedadPersona pp
+
             INNER JOIN dbo.Propiedad p
                 ON p.NumeroFinca = pp.PropiedadId
             INNER JOIN dbo.Persona per
                 ON per.Id = pp.PersonaId
             INNER JOIN @FechaXml.nodes('/FechaOperacion/PropiedadPersona/Movimiento') AS T(M)
-                ON p.NumeroFinca = T.M.value('@numeroFinca','varchar(64)')
-               AND per.ValorDocumento = T.M.value('@valorDocumento','varchar(64)')
+                ON p.NumeroFinca = 
+                                T.M.value('@numeroFinca','varchar(64)')
+               AND per.ValorDocumento = 
+                                T.M.value('@valorDocumento','varchar(64)')
             WHERE T.M.value('@tipoAsociacionId','int') = 2
               AND pp.FechaFin IS NULL;
 
-                        /*=================================================
-                2.4) CCPropiedad (asignar / desasignar)
-                Sin Activo: asignar = INSERT, desasignar = DELETE
-            =================================================*/
+
+            --CCPropiedad (asignar / desasignar)
 
             -- Asignar CC (tipoAsociacionId = 1)
             INSERT INTO dbo.ConceptoCobroPropiedad
             (
-                PropiedadId,
-                ConceptoCobroId,
-                FechaAsociacion
+                 PropiedadId
+                ,ConceptoCobroId
+                ,FechaAsociacion
             )
             SELECT
-                p.NumeroFinca,
-                cc.Id,
-                @FechaActual
+                 p.NumeroFinca
+                ,cc.Id
+                ,@FechaActual
+
             FROM @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
             INNER JOIN dbo.Propiedad p
-                ON p.NumeroFinca = T.M.value('@numeroFinca','varchar(64)')
+                ON p.NumeroFinca = 
+                            T.M.value('@numeroFinca','varchar(64)')
             INNER JOIN dbo.ConceptoCobro cc
-                ON cc.Id = T.M.value('@idCC','int')
+                ON cc.Id = 
+                        T.M.value('@idCC','int')
             WHERE T.M.value('@tipoAsociacionId','int') = 1
               AND NOT EXISTS
               (
@@ -191,101 +194,107 @@ BEGIN
             DELETE cp
             FROM dbo.ConceptoCobroPropiedad cp
             INNER JOIN @FechaXml.nodes('/FechaOperacion/CCPropiedad/Movimiento') AS T(M)
-                ON cp.PropiedadId = T.M.value('@numeroFinca','varchar(64)')
-               AND cp.ConceptoCobroId = T.M.value('@idCC','int')
+                ON cp.PropiedadId = 
+                                T.M.value('@numeroFinca','varchar(64)')
+               AND cp.ConceptoCobroId = 
+                                T.M.value('@idCC','int')
             WHERE T.M.value('@tipoAsociacionId','int') = 2;
 
 
-            /*=================================================
-                2.5) Cambios en valor fiscal
-                (las facturas futuras ya saldrán con el nuevo valor)
-            =================================================*/
+           
+            --Cambios en valor fiscal
             UPDATE p
-            SET p.ValorFiscal = C.value('@nuevoValor','money')
+            SET p.ValorFiscal = 
+                            C.value('@nuevoValor','money')
             FROM dbo.Propiedad p
             INNER JOIN @FechaXml.nodes('/FechaOperacion/PropiedadCambio/Cambio') AS T(C)
-                ON p.NumeroFinca = T.C.value('@numeroFinca','varchar(64)');
+                ON p.NumeroFinca = 
+                                T.C.value('@numeroFinca','varchar(64)');
 
-            /*=================================================
-                2.6) Procesos diarios atómicos
-                * Aquí NO cambio nada en atómicos.
-            =================================================*/
 
+            --Procesos diarios atómicos
             EXEC dbo.SP_ProcesarLecturasDelDia
-                @inFecha        = @FechaActual,
-                @inFechaXml     = @FechaXml,
-                @outResultCode  = @rc OUTPUT;
+                @inFecha        = @FechaActual
+                ,@inFechaXml     = @FechaXml
+                ,@outResultCode  = @rc OUTPUT;
 
             IF (@rc <> 0)
                 RAISERROR('Error en SP_ProcesarLecturasDelDia',16,1);
 
             EXEC dbo.SP_ProcesarPagosDelDia
-                @inFecha        = @FechaActual,
-                @inFechaXml     = @FechaXml,
-                @outResultCode  = @rc OUTPUT;
+                @inFecha        = @FechaActual
+                ,@inFechaXml     = @FechaXml
+                ,@outResultCode  = @rc OUTPUT;
 
             IF (@rc <> 0)
                 RAISERROR('Error en SP_ProcesarPagosDelDia',16,1);
 
             EXEC dbo.SP_GenerarFacturasDelDia
-                @inFecha        = @FechaActual,
-                @outResultCode  = @rc OUTPUT;
+                @inFecha        = @FechaActual
+                , @outResultCode  = @rc OUTPUT;
 
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarFacturasDelDia',16,1);
 
             EXEC dbo.SP_GenerarCortasDelDia
-                @inFecha        = @FechaActual,
-                @outResultCode  = @rc OUTPUT;
+                @inFecha        = @FechaActual
+                ,@outResultCode  = @rc OUTPUT;
 
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarCortasDelDia',16,1);
 
             EXEC dbo.SP_GenerarReconexionesDelDia
-                @inFecha        = @FechaActual,
-                @outResultCode  = @rc OUTPUT;
+                @inFecha        = @FechaActual
+                ,@outResultCode  = @rc OUTPUT;
 
             IF (@rc <> 0)
                 RAISERROR('Error en SP_GenerarReconexionesDelDia',16,1);
 
-            /*=================================================
-                2.7) Siguiente fecha
-            =================================================*/
+        
+            --Siguiente fecha
+            COMMIT TRANSACTION;
+
             DELETE FROM @Fechas
             WHERE Fecha = @FechaActual;
+            
 
         END; -- WHILE
 
+        
         SET @outResultCode = 0;
         RETURN;
 
     END TRY
     BEGIN CATCH
-
+        
+        IF @@TRANCOUNT > 0 --o este ya no va?
+        ROLLBACK TRANSACTION;
         SET @outResultCode = 50002;
 
         INSERT INTO dbo.DBError
         (
-            UserName,
-            Number,
-            State,
-            Severity,
-            Line,
-            [Procedure],
-            Message,
-            DateTime
+            UserName
+            ,Number
+            ,State
+            ,Severity
+            ,Line
+            ,[Procedure]
+            ,Message
+            ,DateTime
         )
         VALUES
         (
-            'SP_CargarOperacionesDesdeXMLV2',
-            ERROR_NUMBER(),
-            ERROR_STATE(),
-            ERROR_SEVERITY(),
-            ERROR_LINE(),
-            'SP_CargarOperacionesDesdeXMLV2',
-            ERROR_MESSAGE(),
-            SYSDATETIME()
+            'SP_CargarOperacionesDesdeXMLV2'
+            ,ERROR_NUMBER()
+            ,ERROR_STATE()
+            ,ERROR_SEVERITY()
+            ,ERROR_LINE()
+            ,'SP_CargarOperacionesDesdeXMLV2'
+            ,ERROR_MESSAGE()
+            ,SYSDATETIME()
         );
+
+        THROW;
 
     END CATCH
 END;

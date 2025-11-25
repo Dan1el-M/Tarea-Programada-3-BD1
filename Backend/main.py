@@ -32,6 +32,7 @@ DB_USER     = os.getenv("DB_USER",     "admin")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "admin")
 ODBC_DRIVER = os.getenv("ODBC_DRIVER", "ODBC Driver 17 for SQL Server")
 
+
 def get_db_connection():
     conn_str = (
         f"DRIVER={{{ODBC_DRIVER}}};"
@@ -43,15 +44,18 @@ def get_db_connection():
     )
     return pyodbc.connect(conn_str)
 
-''''
-def call_sp(sp_name: str, params: List[Any]) -> Tuple[List[List[Dict[str, Any]]], int]:
-    """
-    Ejecuta SPs estándar del curso que SIEMPRE tienen @outResultCode OUTPUT.
-    NO hace SQL incrustado de negocio: solo llama al SP y lee los recordsets.
 
-    Retorna:
-        (recordsets, outResultCode)
-        recordsets = lista de sets; cada set = lista de dicts
+def call_sp(sp_name: str, params: list):
+    """
+    Ejecuta SPs estándar con @outResultCode OUTPUT al final.
+    Retorna (recordsets, out_code) donde:
+
+      recordsets = [ [filaDict, ...],  # resultset 1
+                     [filaDict, ...],  # resultset 2
+                     ...
+                   ]
+
+      out_code   = valor de @outResultCode
     """
     conn = get_db_connection()
     try:
@@ -86,60 +90,10 @@ def call_sp(sp_name: str, params: List[Any]) -> Tuple[List[List[Dict[str, Any]]]
 
         conn.commit()
 
-        # El último recordset SIEMPRE es el SELECT del outResultCode
-        out_code = 0
-        if results and len(results[-1]) == 1 and "outResultCode" in results[-1][0]:
-            out_code = int(results[-1][0]["outResultCode"])
-            results.pop()
-
-        return results, out_code
-
-    finally:
-        conn.close()
-
-'''
-def call_sp(sp_name: str, params: list):
-    """
-    Ejecuta SPs estándar con @outResultCode OUTPUT al final.
-    Retorna (recordsets, out_code)
-    """
-    conn = get_db_connection()
-    try:
-        cur = conn.cursor()
-
-        placeholders = ", ".join(["?"] * len(params))
-        if placeholders:
-            sql = (
-                f"DECLARE @outResultCode INT; "
-                f"EXEC dbo.{sp_name} {placeholders}, "
-                f"@outResultCode=@outResultCode OUTPUT; "
-                f"SELECT @outResultCode AS outResultCode;"
-            )
-        else:
-            sql = (
-                f"DECLARE @outResultCode INT; "
-                f"EXEC dbo.{sp_name} "
-                f"@outResultCode=@outResultCode OUTPUT; "
-                f"SELECT @outResultCode AS outResultCode;"
-            )
-
-        cur.execute(sql, params)
-
-        results = []
-        while True:
-            if cur.description:
-                cols = [c[0] for c in cur.description]
-                rows = cur.fetchall()
-                results.append([dict(zip(cols, r)) for r in rows])
-            if not cur.nextset():
-                break
-
-        conn.commit()
-
         out_code = 0
         if results and results[-1] and "outResultCode" in results[-1][0]:
             out_code = int(results[-1][0]["outResultCode"])
-            results.pop()
+            results.pop()  # quitamos el set del outResultCode
 
         return results, out_code
 
@@ -154,34 +108,28 @@ class LoginIn(BaseModel):
     nombreUsuario: str
     contrasena: str
 
+
 class PagarFacturaIn(BaseModel):
     numeroFinca: str
     tipoMedioPagoId: int
     numeroReferencia: str
     fechaPago: Optional[str] = None  # 'YYYY-MM-DD' o None
 
+
+class SimularPagoIn(BaseModel):
+    numeroFinca: str
+    fechaPago: Optional[str] = None  # 'YYYY-MM-DD' o None
+
+
 # =========================================================
 # 4) ENDPOINTS
 # =========================================================
-
 @app.get("/")
 def root():
     return {"ok": True, "msg": "API funcionando correctamente"}
 
+
 # ---- Login Admin
-'''
-@app.post("/login")
-def login(data: LoginIn):
-    rs, out_code = call_sp("SP_InicioSesionAdmin", [data.nombreUsuario, data.contrasena])
-
-    if out_code != 0:
-        # out_code=1 credenciales malas :contentReference[oaicite:4]{index=4}
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-
-    # SP devuelve el admin si OK :contentReference[oaicite:5]{index=5}
-    usuario = rs[0][0] if rs and rs[0] else None
-    return {"ok": 1, "usuario": usuario}
-'''
 @app.post("/login")
 def login(data: LoginIn):
     rs, out_code = call_sp("SP_InicioSesionAdmin",
@@ -193,13 +141,13 @@ def login(data: LoginIn):
     usuario = rs[0][0] if rs and rs[0] else None
     return {"ok": 1, "usuario": usuario}
 
-# ---- Listar propiedades (filtro opcional)
 
+# ---- Listar propiedades (filtro opcional)
 @app.get("/propiedades")
 def listar_propiedades(q: str = Query(default="")):
     q = (q or "").strip()
 
-    # sin filtro => listar todo (gracias al cambio del SP)
+    # sin filtro => listar todo
     if q == "":
         rs, out_code = call_sp("SP_ListarPropiedades", [None, None])
         return rs[0] if (out_code == 0 and rs) else []
@@ -223,12 +171,13 @@ def obtener_propiedad(numero_finca: str):
         raise HTTPException(status_code=404, detail="Propiedad no existe")
 
     return {
-        "propiedad": rs[0][0] if rs and rs[0] else None,
-        "propietarios": rs[1] if len(rs) > 1 else [],
+        "propiedad":      rs[0][0] if rs and rs[0] else None,
+        "propietarios":   rs[1] if len(rs) > 1 else [],
         "conceptosCobro": rs[2] if len(rs) > 2 else [],
     }
 
-# ---- Facturas pendientes por propiedad
+
+# ---- Facturas por propiedad
 @app.get("/propiedades/{numero_finca}/facturas")
 def facturas_propiedad(numero_finca: str):
     rs, out_code = call_sp("SP_FacturasPorPropiedad", [numero_finca])
@@ -237,6 +186,7 @@ def facturas_propiedad(numero_finca: str):
         return []
 
     return rs[0] if rs else []
+
 
 # ---- Detalle de una factura
 @app.get("/facturas/{numero_factura}/detalle")
@@ -248,6 +198,7 @@ def detalle_factura(numero_factura: int):
 
     return rs[0] if rs else []
 
+
 # ---- Pagar factura más vieja (admin)
 @app.post("/facturas/pagar")
 def pagar_factura(data: PagarFacturaIn):
@@ -258,13 +209,51 @@ def pagar_factura(data: PagarFacturaIn):
         data.fechaPago
     ]
 
-    rs, out_code = call_sp("SP_PagarFacturaAdmin", params)
+    filas, out_code = call_sp("SP_PagarFacturaAdmin", params)
 
     if out_code != 0:
-        # 40001 no hay facturas pendientes :contentReference[oaicite:8]{index=8}
         msg = "No se pudo pagar la factura"
         if out_code == 40001:
             msg = "No hay facturas pendientes para esa propiedad"
         raise HTTPException(status_code=400, detail=msg)
 
-    return {"ok": 1, "msg": "Pago realizado correctamente"}
+    # filas[0] -> SELECT de Factura
+    # filas[1] -> SELECT de DetalleFactura
+    factura = filas[0][0] if filas and filas[0] else None
+    detalle = filas[1]      if len(filas) > 1 else []
+
+    return {
+        "ok": 1,
+        "msg": "Pago realizado correctamente",
+        "factura": factura,
+        "detalle": detalle
+    }
+
+
+# ---- Simular pago (para el modal de confirmación)
+@app.post("/facturas/simular-pago")
+def simular_pago(data: SimularPagoIn):
+    params = [data.numeroFinca, data.fechaPago]
+    filas, out_code = call_sp("SP_SimularPagoFacturaAdmin", params)
+
+    if out_code != 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No hay factura pendiente o hubo un error al simular",
+        )
+
+    if not filas or len(filas) < 2 or not filas[1]:
+        raise HTTPException(
+            status_code=500,
+            detail="Respuesta inesperada de SP_SimularPagoFacturaAdmin",
+        )
+
+    cc_base = filas[0]       # primer resultset: CC base actuales
+    totales = filas[1][0]    # segundo resultset: una fila
+
+    return {
+        "conceptosBase":       cc_base,
+        "interesesMoratorios": totales["InteresesMoratorios"],
+        "reconexion":          totales["ReconexionAgua"],
+        "totalSimulado":       totales["TotalSimulado"],
+    }
