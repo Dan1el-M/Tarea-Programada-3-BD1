@@ -268,9 +268,12 @@ const cargar = async () => {
   facturas.value = fac.data;
 };
 
+// Detalle de factura desde SP_FacturaDetalleCompleto
 const cargarDetalleFactura = async (num) => {
   const resp = await api.get(`/facturas/${num}/detalle`);
-  detalleFactura.value = resp.data ?? [];
+  // backend: { header, detalle }
+  facturaDetalleActual.value = resp.data.header;
+  detalleFactura.value = resp.data.detalle ?? [];
 };
 
 // Computados
@@ -293,7 +296,7 @@ const zonaNombre = computed(() => propiedad.value?.TipoZonaNombre);
 
 // Acciones
 const abrirDetalle = async (f) => {
-  facturaDetalleActual.value = f;
+  // ya no usamos f para el header, se trae todo del SP
   await cargarDetalleFactura(f.NumeroFactura);
   showDetalle.value = true;
 };
@@ -313,37 +316,25 @@ const abrirPagoOldest = async () => {
   const finca = propiedad.value?.NumeroFinca;
   if (!finca || !oldestPending.value) return;
 
-  facturaActual.value = oldestPending.value;
-  referencia.value = genReferencia(finca, facturaActual.value.FechaFactura);
+  // referencia basada en la factura más vieja
+  referencia.value = genReferencia(finca, oldestPending.value.FechaFactura);
 
   try {
     const { data } = await api.post("/facturas/simular-pago", {
       numeroFinca: finca,
       fechaPago: null,
     });
+    // data: { facturaId, header, detalle }
 
-    const lineas = [...(data.conceptosBase || [])];
+    // usamos el header del SP como "facturaActual" para el modal
+    facturaActual.value = {
+      NumeroFactura: data.header.NumeroFactura,
+      FechaFactura: data.header.FechaFactura,
+      FechaLimitePagar: data.header.FechaLimitePagar,
+    };
 
-    if (data.interesesMoratorios && Number(data.interesesMoratorios) !== 0) {
-      lineas.push({
-        NombreCC: "Intereses moratorios",
-        Descripcion: "Intereses moratorios",
-        Monto: data.interesesMoratorios,
-        ConsumoM3: null,
-      });
-    }
-
-    if (data.reconexion && Number(data.reconexion) !== 0) {
-      lineas.push({
-        NombreCC: "Reconexión de agua",
-        Descripcion: "Reconexión de agua",
-        Monto: data.reconexion,
-        ConsumoM3: null,
-      });
-    }
-
-    detallePago.value = lineas;
-    totalSimulado.value = data.totalSimulado ?? 0;
+    detallePago.value = data.detalle ?? [];
+    totalSimulado.value = data.header.TotalCalculado ?? 0;
 
     showPago.value = true;
   } catch (e) {
@@ -382,6 +373,7 @@ const volver = () => router.push("/propiedades");
 
 onMounted(cargar);
 </script>
+
 
 <style scoped>
 .page { padding: 1.2rem; background:#f5f6f8; min-height:100vh; font-family:system-ui; }

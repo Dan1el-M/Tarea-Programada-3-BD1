@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any, Tuple
+from typing import Optional, List, Dict, Any
 import pyodbc
 import os
 
@@ -101,6 +101,31 @@ def call_sp(sp_name: str, params: list):
         conn.close()
 
 
+# 🔹 Helper nuevo: factura pendiente más vieja de una finca
+def get_oldest_pending_invoice_id(numero_finca: str) -> Optional[int]:
+    """
+    Devuelve el Id de la factura PENDIENTE más vieja de una finca,
+    o None si no hay.
+    """
+    conn = get_db_connection()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT TOP (1) Id
+            FROM dbo.Factura
+            WHERE PropiedadId = ?
+              AND EstadoFacturaId = 1
+            ORDER BY FechaFactura, Id;
+            """,
+            (numero_finca,),
+        )
+        row = cur.fetchone()
+        return int(row[0]) if row else None
+    finally:
+        conn.close()
+
+
 # =========================================================
 # 3) MODELOS
 # =========================================================
@@ -188,15 +213,25 @@ def facturas_propiedad(numero_finca: str):
     return rs[0] if rs else []
 
 
-# ---- Detalle de una factura
+# ---- Detalle de una factura (usa SP_FacturaDetalleCompleto)
 @app.get("/facturas/{numero_factura}/detalle")
 def detalle_factura(numero_factura: int):
-    rs, out_code = call_sp("SP_DetalleFactura", [numero_factura])
+    # SP_FacturaDetalleCompleto(@inNumeroFactura, @inFechaReferencia = NULL)
+    rs, out_code = call_sp("SP_FacturaDetalleCompleto", [numero_factura, None])
 
-    if out_code != 0:
-        return []
+    if out_code != 0 or not rs or len(rs) < 2:
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontró detalle para la factura",
+        )
 
-    return rs[0] if rs else []
+    header = rs[0][0] if rs[0] else None   # primer resultset: encabezado
+    detalle = rs[1]                        # segundo resultset: líneas
+
+    return {
+        "header": header,
+        "detalle": detalle,
+    }
 
 
 # ---- Pagar factura más vieja (admin)
@@ -217,8 +252,6 @@ def pagar_factura(data: PagarFacturaIn):
             msg = "No hay facturas pendientes para esa propiedad"
         raise HTTPException(status_code=400, detail=msg)
 
-    # filas[0] -> SELECT de Factura
-    # filas[1] -> SELECT de DetalleFactura
     factura = filas[0][0] if filas and filas[0] else None
     detalle = filas[1]      if len(filas) > 1 else []
 
@@ -230,30 +263,34 @@ def pagar_factura(data: PagarFacturaIn):
     }
 
 
-# ---- Simular pago (para el modal de confirmación)
+# ---- Simular pago (para el modal de confirmación) usando SP_FacturaDetalleCompleto
 @app.post("/facturas/simular-pago")
 def simular_pago(data: SimularPagoIn):
-    params = [data.numeroFinca, data.fechaPago]
-    filas, out_code = call_sp("SP_SimularPagoFacturaAdmin", params)
-
-    if out_code != 0:
+    # 1) Buscar factura pendiente más vieja de la finca
+    factura_id = get_oldest_pending_invoice_id(data.numeroFinca)
+    if factura_id is None:
         raise HTTPException(
             status_code=400,
-            detail="No hay factura pendiente o hubo un error al simular",
+            detail="No hay facturas pendientes para esa propiedad",
         )
 
-    if not filas or len(filas) < 2 or not filas[1]:
+    # 2) Llamar SP_FacturaDetalleCompleto con esa factura y la fechaPago
+    rs, out_code = call_sp(
+        "SP_FacturaDetalleCompleto",
+        [factura_id, data.fechaPago]
+    )
+
+    if out_code != 0 or not rs or len(rs) < 2:
         raise HTTPException(
             status_code=500,
-            detail="Respuesta inesperada de SP_SimularPagoFacturaAdmin",
+            detail="Error al simular el pago de la factura",
         )
 
-    cc_base = filas[0]       # primer resultset: CC base actuales
-    totales = filas[1][0]    # segundo resultset: una fila
+    header = rs[0][0] if rs[0] else None  # encabezado (con totales)
+    detalle = rs[1]                       # detalle completo (base + extras)
 
     return {
-        "conceptosBase":       cc_base,
-        "interesesMoratorios": totales["InteresesMoratorios"],
-        "reconexion":          totales["ReconexionAgua"],
-        "totalSimulado":       totales["TotalSimulado"],
+        "facturaId": factura_id,
+        "header": header,
+        "detalle": detalle,
     }
