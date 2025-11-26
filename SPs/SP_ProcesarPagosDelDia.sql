@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_ProcesarPagosDelDia]    Script Date: 24/11/2025 20:49:25 ******/
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarPagosDelDia]    Script Date: 26/11/2025 15:54:51 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -9,240 +9,219 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SP_ProcesarPagosDelDia]
+CREATE   PROCEDURE [dbo].[SP_ProcesarPagosDelDia]
 (
-     @inFecha        DATE
-    ,@inFechaXml     XML
-    ,@outResultCode  INT OUTPUT
+      @inFecha       DATE
+    , @inFechaXml    XML
+    , @outResultCode INT OUTPUT
 )
 AS
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @StartedTran BIT = 0;
-
     BEGIN TRY
         
-        IF @@TRANCOUNT = 0
-        BEGIN
-            BEGIN TRANSACTION;
-            SET @StartedTran = 1;
-        END
-        ELSE
-        BEGIN
-            SAVE TRANSACTION SP_ProcesarPagosDelDia;
-        END
-
-
-        -- 1) Extraer pagos
+        -- Extraer pagos desde el XML
         DECLARE @Pagos TABLE
         (
-             NumeroFinca       VARCHAR(64)
-            ,TipoMedioPagoId   INT
-            ,NumeroReferencia  VARCHAR(128)
+              NumeroFinca      VARCHAR(64)
+            , TipoMedioPagoId  INT
+            , NumeroReferencia VARCHAR(128)
         );
 
         INSERT INTO @Pagos
         (
-             NumeroFinca
-            ,TipoMedioPagoId
-            ,NumeroReferencia
+              NumeroFinca
+            , TipoMedioPagoId
+            , NumeroReferencia
         )
         SELECT
-             P.value('@numeroFinca','varchar(64)')
-            ,P.value('@tipoMedioPagoId','int')
-            ,P.value('@numeroReferencia','varchar(128)')
+              P.value('@numeroFinca',     'VARCHAR(64)')
+            , P.value('@tipoMedioPagoId', 'INT')
+            , P.value('@numeroReferencia','VARCHAR(128)')
         FROM @inFechaXml.nodes('/FechaOperacion/Pagos/Pago') AS T(P);
 
-
-        -- 2) Mapear pagos con facturas pendientes por finca
+        -- Mapear pagos con facturas pendientes por finca
         DECLARE @PagosConFactura TABLE
         (
-             NumeroFinca        VARCHAR(64)
-            ,TipoMedioPagoId    INT
-            ,NumeroReferencia   VARCHAR(128)
-            ,FacturaId          INT
-            ,TotalOriginal      MONEY
-            ,TotalFinal         MONEY
-            ,FechaLimite        DATE
-            ,DiasMorosos        INT    NULL
-            ,Interes            MONEY  NULL
+              NumeroFinca      VARCHAR(64)
+            , TipoMedioPagoId  INT
+            , NumeroReferencia VARCHAR(128)
+            , FacturaId        INT
+            , TotalOriginal    MONEY
+            , TotalFinal       MONEY
+            , FechaLimite      DATE
+            , DiasMorosos      INT   NULL
+            , Interes          MONEY NULL
         );
 
         ;WITH PagosOrdenados AS
         (
             SELECT
-                 p.NumeroFinca
-                ,p.TipoMedioPagoId
-                ,p.NumeroReferencia
-                ,ROW_NUMBER() OVER
-                (
-                    PARTITION BY p.NumeroFinca
-                    ORDER BY (SELECT 1)
-                ) AS PagoNum
-            FROM @Pagos p
+                  p.NumeroFinca
+                , p.TipoMedioPagoId
+                , p.NumeroReferencia
+                , ROW_NUMBER() OVER
+                  (
+                      PARTITION BY p.NumeroFinca
+                      ORDER BY (SELECT 1)
+                  ) AS PagoNum
+            FROM @Pagos AS p
         ),
         FacturasPendientes AS
         (
             SELECT
-                 f.Id
-                ,f.PropiedadId AS NumeroFinca
-                ,f.TotalAPagarOriginal
-                ,f.TotalAPagarFinal
-                ,f.FechaLimitePagar
-                ,ROW_NUMBER() OVER
-                (
-                    PARTITION BY f.PropiedadId
-                    ORDER BY f.FechaFactura, f.Id
-                ) AS FacturaNum
-            FROM dbo.Factura f
+                  f.Id
+                , f.PropiedadId       AS NumeroFinca
+                , f.TotalAPagarOriginal
+                , f.TotalAPagarFinal
+                , f.FechaLimitePagar
+                , ROW_NUMBER() OVER
+                  (
+                      PARTITION BY f.PropiedadId
+                      ORDER BY     f.FechaFactura
+                               ,   f.Id
+                  ) AS FacturaNum
+            FROM dbo.Factura AS f
             WHERE f.EstadoFacturaId = 1
         )
         INSERT INTO @PagosConFactura
         (
-             NumeroFinca
-            ,TipoMedioPagoId
-            ,NumeroReferencia
-            ,FacturaId
-            ,TotalOriginal
-            ,TotalFinal
-            ,FechaLimite
+              NumeroFinca
+            , TipoMedioPagoId
+            , NumeroReferencia
+            , FacturaId
+            , TotalOriginal
+            , TotalFinal
+            , FechaLimite
         )
         SELECT
-             po.NumeroFinca
-            ,po.TipoMedioPagoId
-            ,po.NumeroReferencia
-            ,fp.Id
-            ,fp.TotalAPagarOriginal
-            ,fp.TotalAPagarFinal
-            ,fp.FechaLimitePagar
-        FROM PagosOrdenados po
-        INNER JOIN FacturasPendientes fp
-            ON fp.NumeroFinca = po.NumeroFinca
-           AND fp.FacturaNum  = po.PagoNum;
+              po.NumeroFinca
+            , po.TipoMedioPagoId
+            , po.NumeroReferencia
+            , fp.Id
+            , fp.TotalAPagarOriginal
+            , fp.TotalAPagarFinal
+            , fp.FechaLimitePagar
+        FROM PagosOrdenados AS po
+        INNER JOIN FacturasPendientes AS fp
+            ON     fp.NumeroFinca = po.NumeroFinca
+               AND fp.FacturaNum  = po.PagoNum;
 
-        -- 3) Calcular morosidad e intereses
+        -- Calcular morosidad e intereses
         DECLARE @IdCC_InteresesMoratorios INT;
 
         SELECT 
             @IdCC_InteresesMoratorios = cc.Id
-        FROM dbo.ConceptoCobro cc
+        FROM dbo.ConceptoCobro AS cc
         WHERE cc.Nombre = 'InteresesMoratorios';
 
-        UPDATE @PagosConFactura
-        SET DiasMorosos =
+        UPDATE pc
+        SET pc.DiasMorosos =
             CASE 
-                WHEN @inFecha > FechaLimite
-                    THEN DATEDIFF(DAY, FechaLimite, @inFecha)
+                WHEN @inFecha > pc.FechaLimite
+                    THEN DATEDIFF(DAY, pc.FechaLimite, @inFecha)
                 ELSE 0
-            END;
+            END
+        FROM @PagosConFactura AS pc;
 
-        UPDATE @PagosConFactura
-        SET Interes =
+        UPDATE pc
+        SET pc.Interes =
             CASE 
-                WHEN DiasMorosos > 0
-                    THEN TotalOriginal * 0.04 / 30.0 * DiasMorosos
+                WHEN pc.DiasMorosos > 0
+                    THEN pc.TotalOriginal * 0.04 / 30.0 * pc.DiasMorosos
                 ELSE 0
-            END;
+            END
+        FROM @PagosConFactura AS pc;
 
- 
-        -- 4) Insertar detalle de intereses
+        BEGIN TRANSACTION;
+
+        -- Insertar detalle de intereses
         INSERT INTO dbo.DetalleFactura
         (
-             FacturaId
-            ,ConceptoCobroId
-            ,Monto
-            ,Descripcion
+              FacturaId
+            , ConceptoCobroId
+            , Monto
+            , Descripcion
         )
         SELECT
-             FacturaId
-            ,@IdCC_InteresesMoratorios
-            ,Interes
-            ,'Intereses moratorios'
-        FROM @PagosConFactura
-        WHERE Interes > 0;
+              pc.FacturaId
+            , @IdCC_InteresesMoratorios
+            , pc.Interes
+            , 'Intereses moratorios'
+        FROM @PagosConFactura AS pc
+        WHERE pc.Interes > 0;
 
-
-        -- 5) Actualizar total final de factura
+        -- Actualizar total final de factura
         UPDATE f
-        SET f.TotalAPagarFinal = f.TotalAPagarFinal + p.Interes
-        FROM dbo.Factura f
-        INNER JOIN @PagosConFactura p 
-            ON p.FacturaId = f.Id
-        WHERE p.Interes > 0;
+        SET f.TotalAPagarFinal = f.TotalAPagarFinal + pc.Interes
+        FROM dbo.Factura AS f
+        INNER JOIN @PagosConFactura AS pc
+            ON pc.FacturaId = f.Id
+        WHERE pc.Interes > 0;
 
-
-        -- 6) Insertar pagos
+        -- Insertar pagos
         INSERT INTO dbo.Pago
         (
-             FacturaId
-            ,TipoMedioPagoId
-            ,FechaPago
-            ,MontoPagado
-            ,NumeroReferencia
+              FacturaId
+            , TipoMedioPagoId
+            , FechaPago
+            , MontoPagado
+            , NumeroReferencia
         )
         SELECT
-             FacturaId
-            ,TipoMedioPagoId
-            ,@inFecha
-            ,(TotalFinal + Interes)
-            ,NumeroReferencia
-        FROM @PagosConFactura;
+              pc.FacturaId
+            , pc.TipoMedioPagoId
+            , @inFecha
+            , ( pc.TotalFinal + ISNULL(pc.Interes, 0) )
+            , pc.NumeroReferencia
+        FROM @PagosConFactura AS pc;
 
-
-        -- 7) Marcar facturas pagadas
+        -- Marcar facturas pagadas
         UPDATE f
         SET f.EstadoFacturaId = 2
-        FROM dbo.Factura f
-        INNER JOIN @PagosConFactura p
-            ON p.FacturaId = f.Id;
+        FROM dbo.Factura AS f
+        INNER JOIN @PagosConFactura AS pc
+            ON pc.FacturaId = f.Id;
 
-
-        IF @StartedTran = 1
-            COMMIT TRANSACTION;
+        COMMIT TRANSACTION;
 
         SET @outResultCode = 0;
         RETURN;
-
     END TRY
+
     BEGIN CATCH
 
-        IF XACT_STATE() <> 0
-        BEGIN
-            IF @StartedTran = 1
-                ROLLBACK TRANSACTION;
-            ELSE
-                ROLLBACK TRANSACTION SP_ProcesarPagosDelDia;
-        END
+        IF ( @@TRANCOUNT > 0 )
+            ROLLBACK TRANSACTION;
 
-        SET @outResultCode = 50030;
+        SET @outResultCode = 50013;
 
         INSERT INTO dbo.DBError
         (
-             UserName
-            ,Number
-            ,State
-            ,Severity
-            ,Line
-            ,[Procedure]
-            ,Message
-            ,DateTime
+              UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
         )
         VALUES
         (
-             'SP_ProcesarPagosDelDia'
-            ,ERROR_NUMBER()
-            ,ERROR_STATE()
-            ,ERROR_SEVERITY()
-            ,ERROR_LINE()
-            ,'SP_ProcesarPagosDelDia'
-            ,ERROR_MESSAGE()
-            ,SYSDATETIME()
+              SUSER_SNAME()
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , ERROR_PROCEDURE()
+            , ERROR_MESSAGE()
+            , SYSDATETIME()
         );
 
         THROW;
-
-    END CATCH
-END
+    END CATCH;
+END;
 GO
 

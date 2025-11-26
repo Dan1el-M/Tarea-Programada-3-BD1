@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_GenerarFacturasDelDia]    Script Date: 24/11/2025 20:57:08 ******/
+/****** Object:  StoredProcedure [dbo].[SP_GenerarFacturasDelDia]    Script Date: 26/11/2025 15:52:41 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -117,23 +117,22 @@ BEGIN
             ON p.NumeroFinca = f.PropiedadId
         INNER JOIN dbo.ConceptoCobroPropiedad ccp
             ON ccp.PropiedadId = p.NumeroFinca
+            AND ccp.TipoAsociacionId = 1
         INNER JOIN dbo.ConceptoCobro cc
             ON cc.Id = ccp.ConceptoCobroId
         INNER JOIN dbo.CC_ConsumoAgua a
             ON a.Id = cc.Id;
 
-        -- Reset saldos para próximo mes
+
         UPDATE p
         SET p.SaldoM3UltimaFactura = p.SaldoM3
-        FROM dbo.Propiedad p
-        INNER JOIN @FacturasHoy f
-            ON f.PropiedadId = p.NumeroFinca
-        WHERE EXISTS (
-            SELECT 1
-            FROM dbo.ConceptoCobroPropiedad ccp
-            INNER JOIN dbo.CC_ConsumoAgua a
-                ON a.Id = ccp.ConceptoCobroId
+        FROM Propiedad p
+        JOIN @FacturasHoy f ON f.PropiedadId = p.NumeroFinca
+        WHERE EXISTS(
+            SELECT 1 FROM ConceptoCobroPropiedad ccp
             WHERE ccp.PropiedadId = p.NumeroFinca
+              AND ccp.ConceptoCobroId = 1
+              AND ccp.TipoAsociacionId = 1
         );
 
 
@@ -155,6 +154,7 @@ BEGIN
             ON p.NumeroFinca = f.PropiedadId
         INNER JOIN dbo.ConceptoCobroPropiedad ccp
             ON ccp.PropiedadId = p.NumeroFinca
+            AND ccp.TipoAsociacionId = 1
         INNER JOIN dbo.ConceptoCobro cc
             ON cc.Id = ccp.ConceptoCobroId
         INNER JOIN dbo.CC_PatenteComercial pc
@@ -179,6 +179,7 @@ BEGIN
             ON p.NumeroFinca = f.PropiedadId
         INNER JOIN dbo.ConceptoCobroPropiedad ccp
             ON ccp.PropiedadId = p.NumeroFinca
+            AND ccp.TipoAsociacionId = 1
         INNER JOIN dbo.ConceptoCobro cc
             ON cc.Id = ccp.ConceptoCobroId
         INNER JOIN dbo.CC_ImpuestoPropiedad ip
@@ -209,6 +210,7 @@ BEGIN
             ON p.NumeroFinca = f.PropiedadId
         INNER JOIN dbo.ConceptoCobroPropiedad ccp
             ON ccp.PropiedadId = p.NumeroFinca
+            AND ccp.TipoAsociacionId = 1
         INNER JOIN dbo.ConceptoCobro cc
             ON cc.Id = ccp.ConceptoCobroId
         INNER JOIN dbo.CC_RecoleccionBasura rb
@@ -232,6 +234,7 @@ BEGIN
             ON p.NumeroFinca = f.PropiedadId
         INNER JOIN dbo.ConceptoCobroPropiedad ccp
             ON ccp.PropiedadId = p.NumeroFinca
+            AND ccp.TipoAsociacionId = 1
         INNER JOIN dbo.ConceptoCobro cc
             ON cc.Id = ccp.ConceptoCobroId
         INNER JOIN dbo.CC_MantenimientoParques mp
@@ -265,7 +268,7 @@ BEGIN
         IF @@TRANCOUNT > 0
             ROLLBACK TRANSACTION;
 
-        SET @outResultCode = 50020;
+        SET @outResultCode = 50006;
 
         INSERT INTO dbo.DBError
         (

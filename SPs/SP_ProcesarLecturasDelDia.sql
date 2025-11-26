@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_ProcesarLecturasDelDia]    Script Date: 24/11/2025 20:46:36 ******/
+/****** Object:  StoredProcedure [dbo].[SP_ProcesarLecturasDelDia]    Script Date: 26/11/2025 15:54:36 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -9,7 +9,7 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SP_ProcesarLecturasDelDia]
+CREATE   PROCEDURE [dbo].[SP_ProcesarLecturasDelDia]
 (
       @inFecha       DATE
     , @inFechaXml    XML
@@ -28,7 +28,6 @@ BEGIN
 
     BEGIN TRY
 
-
         DECLARE @Lecturas TABLE
         (
               NumeroMedidor    VARCHAR(32)
@@ -43,13 +42,11 @@ BEGIN
             , Valor
         )
         SELECT
-              L.value('@numeroMedidor','varchar(32)')
-            , L.value('@tipoMovimientoId','int')
-            , L.value('@valor','decimal(10,2)')
+              L.value('@numeroMedidor','VARCHAR(32)')
+            , L.value('@tipoMovimientoId','INT')
+            , L.value('@valor','DECIMAL(10,2)')
         FROM @inFechaXml.nodes('/FechaOperacion/LecturasMedidor/Lectura') AS T(L);
 
-      
-        --  Transacción atómica 
         BEGIN TRANSACTION;
 
         INSERT INTO dbo.LecturaMedidor
@@ -60,46 +57,44 @@ BEGIN
             , Valor
         )
         SELECT
-              NumeroMedidor
-            , TipoMovimientoId
+              l.NumeroMedidor
+            , l.TipoMovimientoId
             , @inFecha
-            , Valor
-        FROM @Lecturas;
+            , l.Valor
+        FROM @Lecturas AS l;
 
-
-        -- 3) Actualizar saldo M3
-        ;WITH DeltaPorMedidor AS
+        ;WITH MovPorMedidor AS
         (
             SELECT
-                NumeroMedidor,
-                SUM(
-                    CASE TipoMovimientoId
-                        WHEN 1 THEN Valor     -- lectura normal suma
-                        WHEN 2 THEN -Valor    -- crédito resta
-                        WHEN 3 THEN Valor     -- débito suma
-                    END
-                ) AS Delta
+                  NumeroMedidor
+                , TipoMovimientoId
+                , Valor
             FROM @Lecturas
-            GROUP BY NumeroMedidor
         )
         UPDATE p
-            SET p.SaldoM3 = d.Delta
-        FROM dbo.Propiedad p
-        INNER JOIN DeltaPorMedidor d
-            ON d.NumeroMedidor = p.NumeroMedidor;
+        SET p.SaldoM3 =
+                CASE m.TipoMovimientoId
+                    WHEN 1 THEN m.Valor             -- lectura normal
+                    WHEN 2 THEN p.SaldoM3 - m.Valor -- ajuste negativo
+                    WHEN 3 THEN p.SaldoM3 + m.Valor -- ajuste positivo
+                    ELSE p.SaldoM3                  -- por seguridad
+                END
+        FROM dbo.Propiedad AS p
+        INNER JOIN MovPorMedidor AS m
+            ON m.NumeroMedidor = p.NumeroMedidor;
 
         COMMIT TRANSACTION;
 
         SET @outResultCode = 0;
         RETURN;
-
     END TRY
+
     BEGIN CATCH
 
-        IF XACT_STATE() <> 0
+        IF ( @@TRANCOUNT > 0 )
             ROLLBACK TRANSACTION;
 
-        SET @outResultCode = 50010;
+        SET @outResultCode = 50012;
 
         INSERT INTO dbo.DBError
         (
@@ -114,19 +109,18 @@ BEGIN
         )
         VALUES
         (
-              'SP_ProcesarLecturasDelDia'
+              SUSER_SNAME()
             , ERROR_NUMBER()
             , ERROR_STATE()
             , ERROR_SEVERITY()
             , ERROR_LINE()
-            , 'SP_ProcesarLecturasDelDia'
+            , ERROR_PROCEDURE()
             , ERROR_MESSAGE()
             , SYSDATETIME()
         );
 
         THROW;
-
-    END CATCH
+    END CATCH;
 END;
 GO
 
