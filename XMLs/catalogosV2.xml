@@ -1,4 +1,4 @@
-﻿<Catalogos>
+<Catalogos>
 <!--  Parámetros para el sistema, como fecha en la que se hacen los cobros  -->
 <ParametrosSistema>
 <DiasVencimientoFactura>15</DiasVencimientoFactura>
@@ -49,7 +49,7 @@
 <TipoMonto id="3" nombre="Porcentaje"/>
 </TipoMontoCC>
 <CCs>
-<CC id="1" nombre="ConsumoAgua" TipoMontoCC="2" PeriodoMontoCC="1" ValorMinimo="500" ValorMinimoM3="30" ValorFijoM3Adicional="100" ValorPorcentual="" ValorFijo="" ValorM2Minimo="" ValorTramosM2=""/>
+<CC id="1" nombre="ConsumoAgua" TipoMontoCC="2" PeriodoMontoCC="1" ValorMinimo="5000" ValorMinimoM3="30" ValorFijoM3Adicional="1000" ValorPorcentual="" ValorFijo="" ValorM2Minimo="" ValorTramosM2=""/>
 <CC id="2" nombre="PatenteComercial" TipoMontoCC="1" PeriodoMontoCC="3" ValorMinimo="" ValorMinimoM3="" ValorFijoM3Adicional="" ValorPorcentual="" ValorFijo="150000" ValorM2Minimo="" ValorTramosM2=""/>
 <CC id="3" nombre="ImpuestoPropiedad" TipoMontoCC="3" PeriodoMontoCC="4" ValorMinimo="" ValorMinimoM3="" ValorFijoM3Adicional="" ValorPorcentual="0.01" ValorFijo="" ValorM2Minimo="" ValorTramosM2=""/>
 <CC id="4" nombre="RecoleccionBasura" TipoMontoCC="1" PeriodoMontoCC="1" ValorMinimo="150" ValorMinimoM3="" ValorFijoM3Adicional="" ValorPorcentual="" ValorFijo="300" ValorM2Minimo="400" ValorTramosM2="75"/>

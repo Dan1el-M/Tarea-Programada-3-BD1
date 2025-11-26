@@ -1,7 +1,7 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_ObtenerPropiedad]    Script Date: 24/11/2025 20:21:51 ******/
+/****** Object:  StoredProcedure [dbo].[SP_ObtenerPropiedad]    Script Date: 26/11/2025 15:53:54 ******/
 SET ANSI_NULLS ON
 GO
 
@@ -9,10 +9,10 @@ SET QUOTED_IDENTIFIER ON
 GO
 
 
-CREATE PROCEDURE [dbo].[SP_ObtenerPropiedad]
+CREATE   PROCEDURE [dbo].[SP_ObtenerPropiedad]
 (
-     @inNumeroFinca   VARCHAR(64)
-    ,@outResultCode   INT OUTPUT
+      @inNumeroFinca VARCHAR(64)
+    , @outResultCode INT OUTPUT
 )
 /*
 SP que obtiene los datos completos de una propiedad:
@@ -27,97 +27,97 @@ BEGIN
 
     BEGIN TRY
        
-        -- Validación
-        IF NOT EXISTS (
+        -- Validación de existencia de la propiedad
+        IF NOT EXISTS
+        (
             SELECT 1 
-            FROM dbo.Propiedad 
-            WHERE NumeroFinca = @inNumeroFinca
+            FROM dbo.Propiedad AS p
+            WHERE p.NumeroFinca = @inNumeroFinca
         )
         BEGIN
             SET @outResultCode = 3;
             RETURN;
-        END
+        END;
 
         SET @outResultCode = 0;
 
-        --  Datos de la propiedad
+        -- Datos de la propiedad
         SELECT
-             p.NumeroFinca
-            ,p.NumeroMedidor
-            ,p.MetrosCuadrados
-            ,p.TipoUsoId
-            ,tu.Nombre AS TipoUsoNombre
-            ,p.TipoZonaId
-            ,tz.Nombre AS TipoZonaNombre
-            ,p.ValorFiscal
-            ,p.FechaRegistro
-            ,p.SaldoM3
-            ,p.SaldoM3UltimaFactura
-        FROM dbo.Propiedad p
-        INNER JOIN dbo.TipoUsoPropiedad tu 
+              p.NumeroFinca
+            , p.NumeroMedidor
+            , p.MetrosCuadrados
+            , p.TipoUsoId
+            , tu.Nombre AS TipoUsoNombre
+            , p.TipoZonaId
+            , tz.Nombre AS TipoZonaNombre
+            , p.ValorFiscal
+            , p.FechaRegistro
+            , p.SaldoM3
+            , p.SaldoM3UltimaFactura
+        FROM dbo.Propiedad AS p
+        INNER JOIN dbo.TipoUsoPropiedad AS tu 
             ON tu.Id = p.TipoUsoId
-        INNER JOIN dbo.TipoZonaPropiedad tz
+        INNER JOIN dbo.TipoZonaPropiedad AS tz
             ON tz.Id = p.TipoZonaId
         WHERE p.NumeroFinca = @inNumeroFinca;
 
-
         -- Propietarios activos
         SELECT
-             per.ValorDocumento
-            ,per.Nombre
-            ,per.Email
-            ,per.Telefono
-            ,pp.FechaInicio
-        FROM dbo.PropiedadPersona pp
-        INNER JOIN dbo.Persona per
+              per.ValorDocumento
+            , per.Nombre
+            , per.Email
+            , per.Telefono
+            , pp.FechaInicio
+        FROM dbo.PropiedadPersona AS pp
+        INNER JOIN dbo.Persona AS per
             ON per.Id = pp.PersonaId
-        WHERE pp.PropiedadId = @inNumeroFinca
-          AND pp.FechaFin IS NULL
-        ORDER BY pp.FechaInicio;
-
+        WHERE     pp.PropiedadId = @inNumeroFinca
+              AND pp.FechaFin    IS NULL
+        ORDER BY
+            pp.FechaInicio;
 
         -- Conceptos de cobro asociados
         SELECT
-             ccp.ConceptoCobroId
-            ,cc.Nombre
-            ,ccp.FechaAsociacion
-        FROM dbo.ConceptoCobroPropiedad ccp
-        INNER JOIN dbo.ConceptoCobro cc
+              ccp.ConceptoCobroId
+            , cc.Nombre
+            , ccp.FechaAsociacion
+        FROM dbo.ConceptoCobroPropiedad AS ccp
+        INNER JOIN dbo.ConceptoCobro AS cc
             ON cc.Id = ccp.ConceptoCobroId
         WHERE ccp.PropiedadId = @inNumeroFinca
-        ORDER BY ccp.ConceptoCobroId;
-
+        ORDER BY
+            ccp.ConceptoCobroId;
     END TRY
+
     BEGIN CATCH
         
-        SET @outResultCode = 50052;
+        SET @outResultCode = 50010;
 
         INSERT INTO dbo.DBError
         (
-             UserName
-            ,Number
-            ,State
-            ,Severity
-            ,Line
-            ,[Procedure]
-            ,Message
-            ,DateTime
+              UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
         )
         VALUES
         (
-             'SP_ObtenerPropiedad'
-            ,ERROR_NUMBER()
-            ,ERROR_STATE()
-            ,ERROR_SEVERITY()
-            ,ERROR_LINE()
-            ,'SP_ObtenerPropiedad'
-            ,ERROR_MESSAGE()
-            ,SYSDATETIME()
+              SUSER_SNAME()
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , ERROR_PROCEDURE()
+            , ERROR_MESSAGE()
+            , SYSDATETIME()
         );
 
         THROW;
-
-    END CATCH
-END
+    END CATCH;
+END;
 GO
 

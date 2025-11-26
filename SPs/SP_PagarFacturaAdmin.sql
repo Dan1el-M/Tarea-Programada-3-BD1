@@ -1,194 +1,280 @@
 USE [Tarea 3 BD1]
 GO
 
-/****** Object:  StoredProcedure [dbo].[SP_PagarFacturaAdmin]    Script Date: 23/11/2025 17:11:45 ******/
+/****** Object:  StoredProcedure [dbo].[SP_PagarFacturaAdmin]    Script Date: 26/11/2025 15:54:16 ******/
 SET ANSI_NULLS ON
 GO
 
 SET QUOTED_IDENTIFIER ON
 GO
 
+
 CREATE   PROCEDURE [dbo].[SP_PagarFacturaAdmin]
 (
-    @inNumeroFinca       VARCHAR(64),
-    @inTipoMedioPagoId   INT,
-    @inNumeroReferencia  VARCHAR(128),
-    @inFechaPago         DATE = NULL,          -- si no viene, usamos hoy
-    @outResultCode       INT OUTPUT            -- 0 OK, otro error
+      @inNumeroFinca      VARCHAR(64)
+    , @inTipoMedioPagoId  INT
+    , @inNumeroReferencia VARCHAR(128)
+    , @inFechaPago        DATE = NULL
+    , @outResultCode      INT  OUTPUT
 )
 AS
-
-/*
-SP para que el admin pague la factura más vieja (todo de una) y calcula impuesto si esta vencida
-*/
 BEGIN
     SET NOCOUNT ON;
 
-    DECLARE @StartedTran BIT = 0;
-
     BEGIN TRY
-        IF @inFechaPago IS NULL
+
+        IF ( @inFechaPago IS NULL )
             SET @inFechaPago = CONVERT(DATE, SYSDATETIME());
 
-        ------------------------------------------------------------
-        -- Manejo estándar de transacciones anidadas
-        ------------------------------------------------------------
-        IF @@TRANCOUNT = 0
-        BEGIN
-            BEGIN TRAN;
-            SET @StartedTran = 1;
-        END
-        ELSE
-        BEGIN
-            SAVE TRAN SP_PagarFacturaAdmin;
-        END
-
-        ------------------------------------------------------------
-        -- 1) Buscar factura pendiente más vieja de esa finca
-        ------------------------------------------------------------
         DECLARE 
-            @FacturaId        INT,
-            @TotalOriginal    MONEY,
-            @TotalFinal       MONEY,
-            @FechaLimite      DATE;
+              @FacturaId              INT
+            , @TotalOriginal          MONEY
+            , @FechaLimite           DATE;
 
         SELECT TOP (1)
-            @FacturaId     = f.Id,
-            @TotalOriginal = f.TotalAPagarOriginal,
-            @TotalFinal    = f.TotalAPagarFinal,
-            @FechaLimite   = f.FechaLimitePagar
-        FROM dbo.Factura f
-        WHERE f.PropiedadId = @inNumeroFinca
-          AND f.EstadoFacturaId = 1     -- Pendiente
-        ORDER BY f.FechaFactura, f.Id;  -- más vieja primero
+              @FacturaId     = f.Id
+            , @TotalOriginal = f.TotalAPagarOriginal
+            , @FechaLimite   = f.FechaLimitePagar
+        FROM dbo.Factura AS f
+        WHERE     f.PropiedadId     = @inNumeroFinca
+              AND f.EstadoFacturaId = 1
+        ORDER BY
+              f.FechaFactura
+            , f.Id;
 
-        IF @FacturaId IS NULL
+        IF ( @FacturaId IS NULL )
         BEGIN
-            -- No hay facturas pendientes para pagar
-            SET @outResultCode = 40001;
-            IF @StartedTran = 1 COMMIT;
+            SET @outResultCode = 50014; -- no hay factura pendiente
             RETURN;
-        END
+        END;
 
-        ------------------------------------------------------------
-        -- 2) Si está vencida: calcular intereses moratorios
-        ------------------------------------------------------------
         DECLARE 
-            @DiasMora INT = 0,
-            @Interes  MONEY = 0,
-            @IdCC_InteresesMoratorios INT;
+              @Uso           VARCHAR(50)
+            , @DebeTenerAgua BIT = 0;
 
-        SELECT @IdCC_InteresesMoratorios = Id
-        FROM dbo.ConceptoCobro
-        WHERE Nombre = 'InteresesMoratorios';
+        SELECT 
+            @Uso = tu.Nombre
+        FROM dbo.Propiedad AS pr
+        INNER JOIN dbo.TipoUsoPropiedad AS tu
+            ON tu.Id = pr.TipoUsoId
+        WHERE pr.NumeroFinca = @inNumeroFinca;
 
-        IF (@inFechaPago > @FechaLimite)
+        IF (    @Uso IN ('Residencial','Industrial','Comercial')
+            AND EXISTS
+                (
+                    SELECT 1
+                    FROM dbo.ConceptoCobroPropiedad AS cp
+                    INNER JOIN dbo.ConceptoCobro AS cc
+                        ON cc.Id = cp.ConceptoCobroId
+                    INNER JOIN dbo.CC_ConsumoAgua AS ca
+                        ON ca.Id = cc.Id
+                    WHERE     cp.PropiedadId      = @inNumeroFinca
+                          AND cp.TipoAsociacionId = 1
+                )
+           )
+        BEGIN
+            SET @DebeTenerAgua = 1;
+        END;
+
+        DECLARE 
+              @DiasMora                INT   = 0
+            , @Interes                 MONEY = 0
+            , @IdCC_InteresesMoratorios INT
+            , @TotalFinal              MONEY;
+
+        SET @TotalFinal = @TotalOriginal;
+
+        SELECT @IdCC_InteresesMoratorios = cc.Id
+        FROM dbo.ConceptoCobro AS cc
+        WHERE cc.Nombre = 'InteresesMoratorios';
+
+        IF ( @inFechaPago > @FechaLimite )
         BEGIN
             SET @DiasMora = DATEDIFF(DAY, @FechaLimite, @inFechaPago);
+            SET @Interes  = @TotalOriginal * 0.04 / 30.0 * @DiasMora;
+            SET @TotalFinal = @TotalFinal + ISNULL(@Interes, 0);
+        END;
 
-            -- 4% mensual prorrateado diario (0.04/30 * días mora)
-            SET @Interes = @TotalOriginal * 0.04 / 30.0 * @DiasMora;
+        DECLARE 
+              @IdCC_Reconexion   INT
+            , @MontoReconexion   MONEY = 0
+            , @TieneCortaActiva  BIT   = 0
+            , @EsUltimaVencida   BIT   = 0;
 
-            IF @Interes > 0
-            BEGIN
-                -- Insertar detalle de intereses
-                INSERT INTO dbo.DetalleFactura
-                (
-                    FacturaId,
-                    ConceptoCobroId,
-                    Monto,
-                    Descripcion
-                )
-                VALUES
-                (
-                    @FacturaId,
-                    @IdCC_InteresesMoratorios,
-                    @Interes,
-                    'Intereses moratorios'
-                );
+        IF EXISTS
+        (
+            SELECT 1
+            FROM dbo.OrdenCorta AS oc
+            WHERE     oc.PropiedadId = @inNumeroFinca
+                  AND oc.Estado      = 1
+        )
+            SET @TieneCortaActiva = 1;
 
-                -- Actualizar TotalAPagarFinal
-                UPDATE dbo.Factura
-                SET TotalAPagarFinal = TotalAPagarFinal + @Interes
-                WHERE Id = @FacturaId;
+        IF NOT EXISTS
+        (
+            SELECT 1
+            FROM dbo.Factura AS f2
+            WHERE     f2.PropiedadId     = @inNumeroFinca
+                  AND f2.EstadoFacturaId = 1
+                  AND f2.FechaLimitePagar < @inFechaPago
+                  AND f2.Id <> @FacturaId
+        )
+            SET @EsUltimaVencida = 1;
 
-                -- refrescar total final para el pago
-                SELECT @TotalFinal = TotalAPagarFinal
-                FROM dbo.Factura
-                WHERE Id = @FacturaId;
-            END
-        END
+        IF (    @DebeTenerAgua    = 1
+            AND @TieneCortaActiva = 1
+            AND @EsUltimaVencida  = 1
+           )
+        BEGIN
+            SELECT
+                  @IdCC_Reconexion = cc.Id
+                , @MontoReconexion = r.ValorFijo
+            FROM dbo.CC_ReconexionAgua AS r
+            INNER JOIN dbo.ConceptoCobro AS cc
+                ON cc.Id = r.Id;
 
-        ------------------------------------------------------------
-        -- 3) Insertar Pago (pago total de esa factura)
-        ------------------------------------------------------------
+            SET @TotalFinal = @TotalFinal + ISNULL(@MontoReconexion, 0);
+        END;
+
+        BEGIN TRANSACTION;
+
+        IF ( @Interes > 0 )
+        BEGIN
+            INSERT INTO dbo.DetalleFactura
+            (
+                  FacturaId
+                , ConceptoCobroId
+                , Monto
+                , Descripcion
+            )
+            VALUES
+            (
+                  @FacturaId
+                , @IdCC_InteresesMoratorios
+                , @Interes
+                , 'Intereses moratorios'
+            );
+        END;
+
+        IF (    @IdCC_Reconexion IS NOT NULL
+            AND @MontoReconexion IS NOT NULL
+            AND @MontoReconexion > 0
+            AND @DebeTenerAgua    = 1
+            AND @TieneCortaActiva = 1
+            AND @EsUltimaVencida  = 1
+           )
+        BEGIN
+            INSERT INTO dbo.DetalleFactura
+            (
+                  FacturaId
+                , ConceptoCobroId
+                , Monto
+                , Descripcion
+            )
+            VALUES
+            (
+                  @FacturaId
+                , @IdCC_Reconexion
+                , @MontoReconexion
+                , 'Reconexión de agua'
+            );
+
+            UPDATE oc
+            SET
+                  oc.Estado        = 2
+                , oc.FechaEjecutada = @inFechaPago
+            FROM dbo.OrdenCorta AS oc
+            WHERE     oc.PropiedadId = @inNumeroFinca
+                  AND oc.Estado      = 1;
+        END;
+
+        UPDATE dbo.Factura
+        SET TotalAPagarFinal = @TotalFinal
+        WHERE Id = @FacturaId;
+
         INSERT INTO dbo.Pago
         (
-            FacturaId,
-            TipoMedioPagoId,
-            FechaPago,
-            MontoPagado,
-            NumeroReferencia
+              FacturaId
+            , TipoMedioPagoId
+            , FechaPago
+            , MontoPagado
+            , NumeroReferencia
         )
         VALUES
         (
-            @FacturaId,
-            @inTipoMedioPagoId,
-            @inFechaPago,
-            @TotalFinal,          -- incluye interés si aplicó
-            @inNumeroReferencia
+              @FacturaId
+            , @inTipoMedioPagoId
+            , @inFechaPago
+            , @TotalFinal
+            , @inNumeroReferencia
         );
 
-        ------------------------------------------------------------
-        -- 4) Marcar factura como pagada
-        ------------------------------------------------------------
         UPDATE dbo.Factura
-        SET EstadoFacturaId = 2   -- Pagada
+        SET EstadoFacturaId = 2
         WHERE Id = @FacturaId;
 
-        ------------------------------------------------------------
-        -- 5) Fin OK (la reconexión NO se hace aquí)
-        ------------------------------------------------------------
-        IF @StartedTran = 1 COMMIT;
+        COMMIT TRANSACTION;
 
         SET @outResultCode = 0;
+
+        SELECT 
+              f.Id                AS FacturaId
+            , f.PropiedadId
+            , f.FechaFactura
+            , f.FechaLimitePagar
+            , f.TotalAPagarOriginal
+            , f.TotalAPagarFinal
+            , f.EstadoFacturaId
+        FROM dbo.Factura AS f
+        WHERE f.Id = @FacturaId;
+
+        SELECT 
+              df.ConceptoCobroId
+            , cc.Nombre       AS NombreCC
+            , df.Monto
+            , df.Descripcion
+        FROM dbo.DetalleFactura AS df
+        INNER JOIN dbo.ConceptoCobro AS cc
+            ON cc.Id = df.ConceptoCobroId
+        WHERE df.FacturaId = @FacturaId
+        ORDER BY
+            df.Id;
+
         RETURN;
-
     END TRY
-    BEGIN CATCH
-        IF XACT_STATE() <> 0
-        BEGIN
-            IF @StartedTran = 1
-                ROLLBACK;
-            ELSE
-                ROLLBACK TRAN SP_PagarFacturaAdmin;
-        END
 
-        SET @outResultCode = 50050;
+    BEGIN CATCH
+
+        IF ( @@TRANCOUNT > 0 )
+            ROLLBACK TRANSACTION;
+
+        SET @outResultCode = 50011;
 
         INSERT INTO dbo.DBError
         (
-            UserName,
-            Number,
-            State,
-            Severity,
-            Line,
-            [Procedure],
-            Message,
-            DateTime
+              UserName
+            , Number
+            , State
+            , Severity
+            , Line
+            , [Procedure]
+            , Message
+            , DateTime
         )
         VALUES
         (
-            'SP_PagarFacturaAdmin',
-            ERROR_NUMBER(),
-            ERROR_STATE(),
-            ERROR_SEVERITY(),
-            ERROR_LINE(),
-            'SP_PagarFacturaAdmin',
-            ERROR_MESSAGE(),
-            SYSDATETIME()
+              SUSER_SNAME()
+            , ERROR_NUMBER()
+            , ERROR_STATE()
+            , ERROR_SEVERITY()
+            , ERROR_LINE()
+            , ERROR_PROCEDURE()
+            , ERROR_MESSAGE()
+            , SYSDATETIME()
         );
-    END CATCH
+
+        THROW;
+    END CATCH;
 END;
 GO
 
