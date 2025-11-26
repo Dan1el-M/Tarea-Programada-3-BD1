@@ -51,7 +51,7 @@
           <tr>
             <th>Finca</th>
             <th>Medidor</th>
-            <th>Saldo m³</th>
+            <th>Propietarios</th>
             <th>Valor Fiscal</th>
             <th>Acción</th>
           </tr>
@@ -59,16 +59,24 @@
 
         <tbody>
           <tr v-for="p in props" :key="p.NumeroFinca">
-            <td>{{ p.NumeroFinca }}</td>
-            <td>{{ p.NumeroMedidor }}</td>
-            <td>{{ p.SaldoM3 }}</td>
-            <td>{{ fmtCRC(p.ValorFiscal) }}</td>
-            <td>
-              <button class="btn primary" @click="verEstado(p.NumeroFinca)">
-                Ver estado
-              </button>
-            </td>
-          </tr>
+          <td>{{ p.NumeroFinca }}</td>
+          <td>{{ p.NumeroMedidor }}</td>
+          <td>
+            <div
+              v-for="doc in splitPropietarios(p.Propietarios)"
+              :key="doc"
+              class="prop-owner-pill"
+            >
+              {{ doc }}
+            </div>
+          </td>
+          <td>{{ fmtCRC(p.ValorFiscal) }}</td>
+          <td>
+            <button class="btn primary" @click="verEstado(p.NumeroFinca)">
+              Ver estado
+            </button>
+          </td>
+        </tr>
 
           <tr v-if="props.length === 0">
             <td colspan="5" class="empty">No hay propiedades para mostrar</td>
@@ -85,6 +93,11 @@
 import { ref, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import api from "../axios";
+
+function splitPropietarios(p) {
+  if (!p) return [];
+  return p.split(",").map(x => x.trim());
+}
 
 const router = useRouter();
 
@@ -197,6 +210,17 @@ onMounted(cargarTodo);
 .table { width: 100%; border-collapse: collapse; margin-top: .6rem; }
 .table th, .table td { border-bottom: 1px solid #eef0f3; padding: .6rem .5rem; text-align: left; }
 .empty { text-align: center; padding: 1rem; color: #777; }
+
+.prop-owner-pill {
+  display: block;
+  margin-bottom: 4px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid #ffffff;
+  background: #ffffff;
+  font-size: .88rem;
+  width: fit-content;
+}
 
 .toast {
   position: fixed; bottom: 18px; right: 18px;
